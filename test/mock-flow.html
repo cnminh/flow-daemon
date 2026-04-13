@@ -1,0 +1,46 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Mock Flow</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    [role="textbox"] { width: 400px; min-height: 40px; border: 1px solid #ccc;
+      padding: 8px; outline: none; }
+    #flow-outputs img { width: 100px; height: 100px; margin: 4px; }
+  </style>
+</head>
+<body>
+  <h1>Mock Flow</h1>
+  <!-- Matches selectors.js: promptInput = [role="textbox"] -->
+  <div role="textbox" contenteditable="true" data-placeholder="What do you want to create?"></div>
+  <br/>
+  <!-- Matches selectors.js: generateButton = text=Create -->
+  <button onclick="mockGenerate()">Create</button>
+
+  <div id="flow-outputs"></div>
+
+  <script>
+    // A 1x1 red PNG encoded as base64 data URL.
+    const REDPIX =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==';
+
+    function mockGenerate() {
+      // Mimic Flow's behavior: outputs appear a short moment after clicking.
+      // Each image gets a unique src via fragment so the src-set-diff
+      // detection in flow.js can find them (real Flow images have unique
+      // Google-served URLs).
+      const runId = Date.now();
+      setTimeout(() => {
+        const container = document.getElementById('flow-outputs');
+        for (let i = 0; i < 4; i += 1) {
+          const img = document.createElement('img');
+          img.src = REDPIX + '#run-' + runId + '-img-' + i;
+          img.alt = 'Generated image';
+          container.appendChild(img);
+        }
+      }, 100);
+    }
+  </script>
+</body>
+</html>
