@@ -37,10 +37,11 @@ async function main() {
 }
 
 function runDaemon() {
-  // Just delegate to server.js — it has its own CLI behavior under
-  // require.main === module. We re-`require` it as our main module
-  // entry point so its SIGINT/SIGTERM handlers work as expected.
-  require('../server.js');
+  // Delegate to server.js's exported start() — bind port, install signal
+  // handlers, log readiness. The function returns the http.Server which we
+  // ignore here; the event loop stays alive because of the listening socket.
+  const { start } = require('../server.js');
+  start();
 }
 
 async function cmdHealth() {
@@ -67,11 +68,27 @@ async function cmdGenerate(rawArgs) {
     process.exit(1);
   }
 
-  const projectId = parseInt(flags['project-id'], 10);
-  const segmentId = parseInt(flags['segment-id'], 10);
-  if (!Number.isFinite(projectId) || !Number.isFinite(segmentId)) {
-    console.error('error: --project-id and --segment-id are required and must be integers');
-    process.exit(1);
+  // When --project-id / --segment-id are omitted, run in standalone mode:
+  // the daemon still receives a project/segment tuple, but we synthesize
+  // project_id = 0 (reserved for standalone) and segment_id = unix timestamp.
+  // Callers that need images filed under a Content Hub segment (e.g. the
+  // Elixir FlowClient) should pass both flags explicitly.
+  const projectFlag = flags['project-id'];
+  const segmentFlag = flags['segment-id'];
+  const standalone = projectFlag === undefined && segmentFlag === undefined;
+
+  let projectId, segmentId;
+  if (standalone) {
+    projectId = 0;
+    segmentId = Math.floor(Date.now() / 1000);
+  } else {
+    projectId = parseInt(projectFlag, 10);
+    segmentId = parseInt(segmentFlag, 10);
+    if (!Number.isFinite(projectId) || !Number.isFinite(segmentId)) {
+      console.error('error: --project-id and --segment-id must both be integers when provided');
+      console.error('       omit both to run in standalone mode');
+      process.exit(1);
+    }
   }
 
   let enqueueRes;
@@ -97,7 +114,8 @@ async function cmdGenerate(rawArgs) {
 
   const { job_id } = await enqueueRes.json();
   if (!flags.quiet && !flags.json) {
-    console.error(`[flow-cli] enqueued ${job_id}, polling...`);
+    const mode = standalone ? 'standalone' : `project=${projectId} segment=${segmentId}`;
+    console.error(`[flow-cli] enqueued ${job_id} (${mode}), polling...`);
   }
 
   const startTime = Date.now();
@@ -180,8 +198,11 @@ Usage:
   flow-cli generate [PROMPT] [flags]           Enqueue, wait, print image_path
 
 Generate flags:
-  --project-id N      (required) project id
-  --segment-id N      (required) segment id
+  --project-id N      Content Hub project id (pair with --segment-id)
+  --segment-id N      Content Hub segment id (pair with --project-id)
+                      Omit both for standalone mode: project_id=0 and
+                      segment_id=<timestamp>. Image lands under
+                      priv/uploads/video_projects/0/segments/<ts>/flow.png
   --prompt TEXT       prompt (or use positional arg, or pipe via stdin)
   --json              print full status JSON instead of just the image path
   --quiet             suppress progress messages on stderr
@@ -197,9 +218,10 @@ Examples:
 
   # In another:
   flow-cli health
-  flow-cli generate "a red apple on wood, 16:9" --project-id 1 --segment-id 42
-  echo "a sunset" | flow-cli generate --project-id 1 --segment-id 43
-  flow-cli generate --prompt "a brain" --project-id 1 --segment-id 44 --json
+  flow-cli generate "a red apple on wood, 16:9"                # standalone
+  echo "a sunset" | flow-cli generate                          # standalone, stdin
+  flow-cli generate "a brain" --project-id 1 --segment-id 42   # save for Content Hub
+  flow-cli generate "a brain" --project-id 1 --segment-id 42 --json
 
 Exit codes:
   0  success
