@@ -152,7 +152,24 @@ async function ensureDaemonUp() {
 
   const zombie = findProcessOnPort(PORT);
   if (zombie) {
-    console.error(`[flow-cli] port ${PORT} held by PID ${zombie} but not responding — killing`);
+    // Safeguard against racing with another CLI that just spawned a daemon
+    // and is mid-boot: retry /health a few times with a short delay before
+    // declaring the port-holder a zombie. A real daemon usually responds
+    // within a second or two of binding the port.
+    console.error(`[flow-cli] port ${PORT} held by PID ${zombie} — probing for 3s before deciding`);
+    let settledHealthy = false;
+    for (let i = 0; i < 6; i += 1) {
+      await sleep(500);
+      if (await isDaemonHealthy()) {
+        settledHealthy = true;
+        break;
+      }
+    }
+    if (settledHealthy) {
+      console.error(`[flow-cli] port ${PORT} was booting, now healthy — proceeding`);
+      return;
+    }
+    console.error(`[flow-cli] PID ${zombie} still not responding after probe — killing`);
     try {
       process.kill(zombie, 'SIGKILL');
     } catch {
