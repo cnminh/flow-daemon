@@ -52,6 +52,7 @@ async function drainQueue() {
       error_code: e.error_code || 'selector_missing',
     });
     if (e.error_code === 'browser_crashed') browserConnected = false;
+    if (e.error_code === 'profile_locked') browserConnected = false;
     if (e.error_code === 'not_logged_in') loggedIn = false;
   } finally {
     workerBusy = false;

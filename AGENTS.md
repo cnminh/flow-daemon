@@ -174,8 +174,10 @@ Module responsibilities:
   `lib/mode-toggle.js`).
 - Error handling: throw `Error` objects with `err.error_code` set to one of
   the documented codes (`not_logged_in`, `captcha`, `quota_exceeded`,
-  `timeout`, `selector_missing`, `browser_crashed`, `network`). The worker
-  loop in `server.js` maps these into the HTTP response.
+  `timeout`, `selector_missing`, `browser_crashed`, `profile_locked`,
+  `network`). The worker loop in `server.js` maps these into the HTTP
+  response; `browser_crashed` and `profile_locked` additionally clear
+  the `browserConnected` health flag.
 - HTTP requests from the CLI: use built-in `fetch` (Node 18+). No axios, no
   node-fetch dep.
 - Tests: `node --test` runner, plain `assert`. No Jest, no Mocha.

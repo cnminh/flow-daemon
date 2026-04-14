@@ -186,6 +186,7 @@ written to — same as what the CLI prints on stdout.
 | `timeout` | Flow took >180s — retry |
 | `selector_missing` | Flow UI changed — see "When Flow UI changes" below |
 | `browser_crashed` | Restart the daemon |
+| `profile_locked` | Another Chromium is using `~/.flow-daemon/profile/` and it's not ours. The error message shows the offending PID — close it manually and retry. (If it IS an orphan of ours, the daemon auto-kills it; this error only fires when the lock-holder is an unrelated process.) |
 | `network` | Image download failed — retry |
 
 ---

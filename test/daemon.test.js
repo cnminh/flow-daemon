@@ -1,6 +1,32 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const http = require('node:http');
+const path = require('node:path');
+
+// Meaningful, varied prompt pool. Tests pick one at random per run so
+// we don't repeatedly train on the same string — matters for anti-bot
+// posture even though these only hit the mock fixture.
+const PROMPT_POOL = [
+  'A weathered wooden bridge over a mountain stream in late autumn, golden leaves scattered on the planks, morning mist rising, cinematic 16:9',
+  'An elderly woman reading a book under a reading lamp in a cozy library, warm tungsten light, rich shadows, film grain, shot on 35mm',
+  'A ceramic coffee cup on a worn leather journal, brass fountain pen beside it, window light streaming across an oak desk, shallow depth of field, 16:9',
+  'A misty pine forest at dawn, shafts of golden sunlight piercing the fog, damp moss on the forest floor, wide cinematic composition, atmospheric haze',
+  'A freshly baked sourdough loaf on a flour-dusted wooden board, steam rising, a linen cloth nearby, overhead natural light from a kitchen window',
+  'A lone fisherman in a small wooden boat at sunrise on a glass-calm lake, silhouetted against pastel sky, long reflection on water, serene mood',
+  'A cozy reading nook by a frosted window during snowfall, knit blanket, a mug of cocoa, soft lamplight, pine branches outside catching snow',
+  'A craftsman workshop with hand tools arranged on a pegboard, shavings on the floor, afternoon light angling through sawdust, warm wood tones',
+];
+
+function randomPrompt() {
+  return PROMPT_POOL[Math.floor(Math.random() * PROMPT_POOL.length)];
+}
+
+// All tests use the local mock-flow.html fixture so we never hit
+// labs.google/flow from CI or an unattended test run, and we never touch
+// the real ~/.flow-daemon/profile. Each test that enqueues work must set
+// FLOW_URL_OVERRIDE (individually or via this shared constant) so the
+// daemon worker takes the ephemeral-headless branch in runJob.
+const MOCK_FIXTURE_URL = 'file://' + path.resolve(__dirname, 'mock-flow.html');
 
 function get(port, path) {
   return new Promise((resolve, reject) => {
@@ -38,6 +64,11 @@ test('POST /enqueue returns job_id and status returns queued', async () => {
   // Test isolation: clear any leftover queue state from previous tests
   require('../lib/queue').reset();
 
+  // Pin the worker to the mock fixture so the background drainQueue doesn't
+  // try to talk to real labs.google/flow (which would hang this test and
+  // race with later tests that share the module-level browserContext).
+  process.env.FLOW_URL_OVERRIDE = MOCK_FIXTURE_URL;
+
   const { createServer } = require('../server.js');
   const server = createServer();
   await new Promise((r) => server.listen(0, r));
@@ -61,7 +92,7 @@ test('POST /enqueue returns job_id and status returns queued', async () => {
         }
       );
       req.on('error', reject);
-      req.write(JSON.stringify({ prompt: 'a brain', project_id: 7, segment_id: 42 }));
+      req.write(JSON.stringify({ prompt: randomPrompt(), project_id: 7, segment_id: 42 }));
       req.end();
     });
 
@@ -84,6 +115,7 @@ test('POST /enqueue returns job_id and status returns queued', async () => {
       'image_path should be null or a string'
     );
   } finally {
+    delete process.env.FLOW_URL_OVERRIDE;
     await new Promise((r) => server.close(r));
   }
 });
@@ -105,7 +137,6 @@ test('GET /status/:unknown returns 404', async () => {
   }
 });
 
-const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
 
@@ -116,16 +147,14 @@ test('runJob against mock fixture downloads first image to rootDir', async () =>
   const { runJob } = require('../lib/flow.js');
 
   const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'flow-daemon-test-'));
-  const fixtureUrl =
-    'file://' + path.resolve(__dirname, 'mock-flow.html');
 
   try {
     const result = await runJob({
-      prompt: 'a brain',
+      prompt: randomPrompt(),
       project_id: 7,
       segment_id: 42,
       rootDir,
-      flowUrl: fixtureUrl, // test-only override
+      flowUrl: MOCK_FIXTURE_URL, // test-only override
       timeoutMs: 10_000,
     });
 
@@ -143,15 +172,11 @@ test('worker consumes queued jobs against mock fixture', async () => {
   // Test isolation: clear any leftover queue state from previous tests
   require('../lib/queue').reset();
 
-  const path = require('node:path');
-  const fs = require('node:fs');
-  const os = require('node:os');
   const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'flow-daemon-test-'));
-  const fixtureUrl = 'file://' + path.resolve(__dirname, 'mock-flow.html');
 
   // Set up env for the daemon under test
   process.env.FLOW_ROOT_DIR = rootDir;
-  process.env.FLOW_URL_OVERRIDE = fixtureUrl;
+  process.env.FLOW_URL_OVERRIDE = MOCK_FIXTURE_URL;
 
   const { createServer } = require('../server.js');
   const server = createServer();
@@ -176,7 +201,7 @@ test('worker consumes queued jobs against mock fixture', async () => {
         }
       );
       req.on('error', reject);
-      req.write(JSON.stringify({ prompt: 'hello', project_id: 9, segment_id: 1 }));
+      req.write(JSON.stringify({ prompt: randomPrompt(), project_id: 9, segment_id: 1 }));
       req.end();
     });
 
