@@ -42,19 +42,40 @@ flow-cli daemon          # starts the HTTP server + opens Chromium
 
 ## CLI
 
+`flow-cli generate` has **three output modes**, in precedence order:
+
+| Flags | Where the image lands | Use case |
+|---|---|---|
+| `--output PATH` | exactly `PATH` (absolute), or `<FLOW_ROOT_DIR>/PATH` (relative) | explicit one-off saves |
+| `--project-id N --segment-id M` | `<FLOW_ROOT_DIR>/priv/uploads/video_projects/N/segments/M/flow.png` | Content Hub integration |
+| *(no flags)* | `/tmp/flow_content/flow-<unix-timestamp>.png` | casual standalone default |
+
+Examples:
+
 ```bash
-flow-cli daemon                                    # foreground HTTP daemon (Ctrl+C exits cleanly)
-flow-cli health                                    # JSON health check
-flow-cli generate "a red apple on wood, 16:9" \    # one image, prints path on stdout
-        --project-id 1 --segment-id 42
+flow-cli daemon                                            # foreground HTTP daemon (Ctrl+C exits)
+flow-cli health                                            # JSON health check
 
-echo "a sunset" | flow-cli generate \              # prompt via stdin
-        --project-id 1 --segment-id 43
+# Standalone — image saved under /tmp/flow_content/
+flow-cli generate "a red apple on wood, 16:9"
 
-flow-cli generate --prompt "neurons firing" \      # full JSON output
-        --project-id 1 --segment-id 44 --json
+# Custom output path (absolute)
+flow-cli generate "a cat on a bench" --output ~/Pictures/cat.png
+
+# Custom output path (relative to daemon's FLOW_ROOT_DIR)
+flow-cli generate "a dog" --output custom/dog.png
+
+# Content Hub integration — saves under video_projects/<p>/segments/<s>/flow.png
+flow-cli generate "neurons firing" --project-id 1 --segment-id 42
+
+# Prompt via stdin (any mode)
+echo "a sunset over the ocean" | flow-cli generate
+
+# Full JSON output (image_path + timing + status + error_code)
+flow-cli generate --prompt "a brain" --project-id 1 --segment-id 44 --json
 ```
 
+On success the CLI prints the image path to stdout (or full JSON with `--json`).
 Exit codes: `0` ok, `1` bad args, `2` daemon unreachable, `3` generation failed.
 
 ---
@@ -65,9 +86,28 @@ The daemon exposes three endpoints on `127.0.0.1:47321`:
 
 ```
 GET  /health             → {ok, browser_connected, logged_in, queue_depth, version}
-POST /enqueue            → body {prompt, project_id, segment_id} → {job_id, queue_position}
-GET  /status/:job_id     → {status: queued|running|done|error, image_path, error_code, ...}
+POST /enqueue            → body + returns
+GET  /status/:job_id     → {status, image_path, output_path, error_code, ...}
 ```
+
+`POST /enqueue` body:
+
+```jsonc
+{
+  "prompt": "string (required)",
+  // Provide either output_path OR (project_id + segment_id):
+  "output_path": "string",    // absolute, or relative to FLOW_ROOT_DIR
+  "project_id": 0,            // integer, legacy Content Hub pattern
+  "segment_id": 0             // integer, legacy Content Hub pattern
+}
+// → {"job_id": "j_...", "queue_position": 1}
+```
+
+When both are supplied, `output_path` wins. When neither is supplied, the
+endpoint returns `400`.
+
+`image_path` in the `/status` response is the path the image was actually
+written to — same as what the CLI prints on stdout.
 
 `error_code` taxonomy when `status: "error"`:
 
@@ -107,7 +147,7 @@ flow-daemon/
 |---|---|---|
 | `FLOW_DAEMON_PORT` | `47321` | HTTP port |
 | `FLOW_DAEMON_URL` | `http://127.0.0.1:$PORT` | (CLI only) base URL when calling daemon |
-| `FLOW_ROOT_DIR` | parent of `server.js` (resolves to repo root) | where downloaded images go, under `priv/uploads/video_projects/<pid>/segments/<sid>/flow.png` |
+| `FLOW_ROOT_DIR` | parent of `server.js` (resolves to repo root) | base dir for *relative* output paths. Absolute `output_path` values bypass it entirely. Default Content Hub pattern lives under this dir. |
 | `FLOW_URL_OVERRIDE` | unset | (test only) navigate to this URL instead of `labs.google/fx/tools/flow/...` |
 
 For Content Hub use, the daemon should be started with `FLOW_ROOT_DIR`
