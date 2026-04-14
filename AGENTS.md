@@ -24,18 +24,34 @@ but the HTTP surface is generic enough to be called by anything.
 1. **Single daemon, single browser, single job at a time.** The `workerBusy`
    flag in `server.js` gates concurrency. Don't try to parallelize jobs — Flow
    is one session, and concurrent clicks will race the Playwright page state.
-2. **Selectors live in `lib/selectors.js` — nowhere else.** When Google ships
+2. **Never open a second session against `~/.flow-daemon/profile/`.** If you
+   need to inspect the browser manually (e.g. debugging Flow UI changes),
+   kill the daemon first. Two chromium instances fighting over one profile
+   corrupts `SingletonLock` and leaves orphan processes.
+3. **Selectors live in `lib/selectors.js` — nowhere else.** When Google ships
    a UI change, one-file edit.
-3. **Anti-detection timing must stay.** The humanized typing delay (40–90ms
-   jitter), pre/post-typing pauses, 5–15s cooldown between jobs, and
-   `navigator.webdriver` erasure are all load-bearing against Google's bot
-   detection. Don't "optimize" them away.
-4. **The daemon never takes credentials.** The whole point of persistent
+4. **Anti-detection timing must stay.** These values are load-bearing
+   against Google's bot detection — don't "optimize" them away:
+   - Per-character typing delay (120–270ms jitter) sampled **per keystroke**
+     via a manual loop, *not* Playwright's `{delay: N}` option (which uses
+     a fixed N for the whole string — previously flagged as "unusual activity")
+   - Random pauses around settings-popover clicks (1200–2500ms)
+   - Pre-typing read pause (600–1500ms), post-typing proofread pause (1000–2500ms)
+   - 5–15s random cooldown between jobs
+   - `navigator.webdriver` erased via `addInitScript`
+5. **The daemon never takes credentials.** The whole point of persistent
    profile + manual first-login is so passwords never touch automation code.
    Don't add a `/login` endpoint or a `GOOGLE_PASSWORD` env var.
-5. **Only bind to `127.0.0.1`.** Never `0.0.0.0`. This daemon drives a
+6. **Only bind to `127.0.0.1`.** Never `0.0.0.0`. This daemon drives a
    logged-in browser — anyone on your network could hijack it. If you
    genuinely need remote access, use SSH port-forwarding or Tailscale.
+7. **Output count is `x1` and that's deliberate.** We download one image
+   per job; generating more wastes Flow quota and generation time. The
+   `ensureImageModeAndCount(page, 1)` call in `runJob` sets this. Don't
+   raise the default.
+8. **The profile path is `~/.flow-daemon/profile/`** (not
+   `~/.content-hub/...` — that was before the repo was extracted). Don't
+   reintroduce references to the content-hub path.
 
 ---
 
@@ -126,14 +142,22 @@ flow-cli (CLI)                       External caller (Elixir FlowClient, curl, e
 Module responsibilities:
 
 - `bin/flow-cli.js` — argv parsing, mode resolution (standalone / output /
-  ids), HTTP calls to the daemon, polling, exit codes. No Playwright here.
+  ids), HTTP calls to the daemon, polling, exit codes. Also owns the
+  daemon auto-start lifecycle (`ensureDaemonUp`, `spawnDaemon`,
+  `findProcessOnPort`). Spawns `node server.js` detached + unrefed on
+  cold calls. No Playwright here.
 - `server.js` — Express routes, worker loop, graceful shutdown, env var
-  reading. Also calls `closeBrowser()` from `lib/flow.js` on SIGINT/SIGTERM.
+  reading. Also owns the idle-shutdown watchdog (`FLOW_DAEMON_IDLE_TIMEOUT_MIN`,
+  default 30). Calls `closeBrowser()` from `lib/flow.js` on SIGINT/SIGTERM
+  and on idle-timeout.
 - `lib/flow.js` — everything Playwright. `runJob` is the main export;
-  `closeBrowser` for shutdown; `ensureImageMode` for the Flow UI dance.
-- `lib/queue.js` — FIFO singleton with module-level state. Exposes a
-  `reset()` function used only in tests.
-- `lib/selectors.js` — CSS/Playwright selectors. **Single source.**
+  `closeBrowser` for shutdown; `ensureImageModeAndCount(page, 1)` opens
+  the Flow settings popover once, flips mode (Image) AND output count
+  (x1) in the same cycle, then Escapes to close.
+- `lib/queue.js` — FIFO singleton with module-level state. Exposes
+  `currentJob()` for `/health`, and `reset()` for tests only.
+- `lib/selectors.js` — CSS/Playwright selectors. **Single source.** Includes
+  `countTab(n)` as a function returning the selector for `x1/x2/x3/x4`.
 - `test/mock-flow.html` — static HTML fixture that mimics Flow's DOM
   (textbox + Create button + output images). Must stay in lockstep with
   `selectors.js`.
@@ -174,6 +198,16 @@ Module responsibilities:
   side mode resolution). Keep all three consistent. Run the mock-fixture
   test to verify.
 - **Bug fixes for Google UI drift:** selectors only, 99% of the time.
+- **Testing against real Flow:** use meaningful, varied prompts —
+  NEVER loop "test", "hello", "a brain", etc. Identical prompts in
+  quick succession is itself a bot signal. A good test prompt looks
+  like: *"A weathered wooden bridge over a mountain stream in late
+  autumn, golden leaves, morning mist, cinematic 16:9"*.
+- **If a live test hits a "Failed — unusual activity" error from Flow,
+  stop.** Wait at least 15 minutes before trying again. Don't retry
+  immediately — that compounds the flag. Don't restart the daemon or
+  clear the profile — the logged-in state is fine, you just need
+  Google's detection cooldown to elapse.
 
 ---
 

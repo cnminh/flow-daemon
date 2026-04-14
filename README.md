@@ -38,9 +38,23 @@ flow-cli daemon          # starts the HTTP server + opens Chromium
 # Ctrl+C the daemon when done with first-run setup.
 ```
 
+After first-run login, you don't need to run `flow-cli daemon` by hand
+anymore — `flow-cli generate` auto-starts the daemon if it isn't already
+running, and the daemon auto-shuts-down after 30min of idleness.
+
 ---
 
 ## CLI
+
+Subcommands:
+
+| Command | Purpose |
+|---|---|
+| `flow-cli daemon` | Start the HTTP daemon in the foreground (Ctrl+C to stop) |
+| `flow-cli health` | Full daemon health JSON |
+| `flow-cli status` | Short human-readable snapshot: `idle` or `busy: generating (Ns elapsed)` |
+| `flow-cli generate [PROMPT] [flags]` | Generate an image. **Auto-starts the daemon if it's not running** |
+| `flow-cli help` / `--help` / `-h` | Print help |
 
 `flow-cli generate` has **three output modes**, in precedence order:
 
@@ -53,30 +67,59 @@ flow-cli daemon          # starts the HTTP server + opens Chromium
 Examples:
 
 ```bash
-flow-cli daemon                                            # foreground HTTP daemon (Ctrl+C exits)
-flow-cli health                                            # JSON health check
-
-# Standalone — image saved under /tmp/flow_content/
-flow-cli generate "a red apple on wood, 16:9"
+# Standalone — no flags, image saved under /tmp/flow_content/
+flow-cli generate "A weathered wooden bridge over a mountain stream in late autumn, 16:9"
 
 # Custom output path (absolute)
-flow-cli generate "a cat on a bench" --output ~/Pictures/cat.png
+flow-cli generate "A ceramic coffee cup on a worn leather journal" --output ~/Pictures/coffee.png
 
 # Custom output path (relative to daemon's FLOW_ROOT_DIR)
-flow-cli generate "a dog" --output custom/dog.png
+flow-cli generate "a misty pine forest at dawn" --output custom/forest.png
 
 # Content Hub integration — saves under video_projects/<p>/segments/<s>/flow.png
-flow-cli generate "neurons firing" --project-id 1 --segment-id 42
+flow-cli generate "neurons firing, cinematic macro, 16:9" --project-id 1 --segment-id 42
 
 # Prompt via stdin (any mode)
-echo "a sunset over the ocean" | flow-cli generate
+echo "a sunset over the Pacific, long exposure clouds" | flow-cli generate
 
 # Full JSON output (image_path + timing + status + error_code)
-flow-cli generate --prompt "a brain" --project-id 1 --segment-id 44 --json
+flow-cli generate "an elderly man reading under lamplight" --output out.png --json
+
+# Check if daemon is running (returns exit code 0/2)
+flow-cli status
 ```
 
 On success the CLI prints the image path to stdout (or full JSON with `--json`).
 Exit codes: `0` ok, `1` bad args, `2` daemon unreachable, `3` generation failed.
+
+### Daemon lifecycle
+
+You almost never need to manage the daemon by hand. The CLI handles it:
+
+- `flow-cli generate` auto-starts the daemon if not running (spawns it
+  detached in the background, waits up to 15s for it to respond, then
+  proceeds with the enqueue). First call after a cold start adds ~2s.
+- The daemon **auto-shuts-down after 30 minutes of idleness** (no queued
+  jobs, no running worker, no enqueues). Override with
+  `FLOW_DAEMON_IDLE_TIMEOUT_MIN` env var (set to `0` to disable).
+- Background daemon logs go to `~/.flow-daemon/daemon.log` (append-only).
+- To stop the daemon manually: `kill $(lsof -ti :47321)` — sends SIGTERM
+  which closes Chromium cleanly so the profile's `SingletonLock` is
+  released.
+
+### When a generation fails
+
+Three error codes need you to act in the Chromium window (the CLI cannot
+recover these automatically):
+
+- `not_logged_in` — sign back into Google in the Chromium window, then retry
+- `captcha` — solve the CAPTCHA in the Chromium window, then retry
+- `quota_exceeded` — wait for daily quota reset (Flow credits)
+
+Other errors (`timeout`, `network`, `selector_missing`, `browser_crashed`)
+are transient or require a code fix. Just wait a minute and retry — do
+**not** restart the daemon for every transient failure, that thrashes the
+browser profile and wastes the logged-in session.
 
 ---
 
@@ -85,9 +128,33 @@ Exit codes: `0` ok, `1` bad args, `2` daemon unreachable, `3` generation failed.
 The daemon exposes three endpoints on `127.0.0.1:47321`:
 
 ```
-GET  /health             → {ok, browser_connected, logged_in, queue_depth, version}
+GET  /health             → {ok, browser_connected, logged_in, worker_busy,
+                            queue_depth, current_job, version}
 POST /enqueue            → body + returns
 GET  /status/:job_id     → {status, image_path, output_path, error_code, ...}
+```
+
+`/health` includes a `current_job` object describing what's being generated
+right now (or `null` if idle), plus `worker_busy` to distinguish "idle" from
+"actively running a job" — `queue_depth: 0` alone is ambiguous:
+
+```jsonc
+{
+  "ok": true,
+  "browser_connected": true,
+  "logged_in": true,
+  "worker_busy": true,
+  "queue_depth": 0,
+  "current_job": {
+    "job_id": "j_mnv2ub731",
+    "prompt": "A weathered wooden bridge over a mountain stream...",
+    "started_at": "2026-04-14T17:10:32Z",
+    "output_path": "/tmp/flow_content/flow-1776176358.png",
+    "project_id": null,
+    "segment_id": null
+  },
+  "version": "0.1.0"
+}
 ```
 
 `POST /enqueue` body:
@@ -198,9 +265,17 @@ Don't scatter selectors across `flow.js`. Keeping them all in
 ## Anti-detection measures (already in place)
 
 - Headed Chromium, persistent profile (vs. headless which Google blocks)
-- Per-character typing delay (40-90ms jitter, ~60-100 WPM)
-- Random pauses before/after typing (read + proofread mimicry)
-- 5–15s cooldown between jobs (no tight loops)
+- **Per-character random typing delay** (120–270ms jitter, ~30 WPM). The
+  jitter value is resampled *each keystroke* via a manual loop, not
+  Playwright's `{delay: N}` option which uses a single fixed N for the
+  whole string — that earlier shape was flagged as "unusual activity".
+- Random pauses before/after typing (600–1500ms read, 1000–2500ms proofread)
+- Random pauses around every settings-popover click (1200–2500ms). The
+  previous 400–800ms was fast enough to trigger Google's detection when
+  combined with fast typing.
+- 5–15s random cooldown between jobs (no tight loops)
+- `x1` output count by default — halves both generation time and quota
+  burn per call
 - `navigator.webdriver = false` via `addInitScript`
 - Stale `SingletonLock` cleanup on startup so kill -9 doesn't brick the profile
 - Graceful SIGINT/SIGTERM shutdown
@@ -209,6 +284,46 @@ These are the high-impact basics. For a personal tool driving your own
 account, this is enough — Google's bot detection is much more aggressive
 against headless scrapers than against headed automation with real session
 cookies and humanized timing.
+
+---
+
+## Best practices
+
+Collected lessons from actually running this against real Flow:
+
+1. **Vary your prompts.** Don't hammer the same prompt ("a brain", "hello",
+   "test") repeatedly — identical prompts from the same account in quick
+   succession is itself a bot signal. Use real, meaningful, varied
+   descriptions when testing. Every prompt should look like something a
+   real person would type.
+2. **Don't open multiple sessions of the same profile.** The daemon
+   auto-manages its one Chromium instance with the profile at
+   `~/.flow-daemon/profile/`. Never launch a second Chromium against the
+   same profile — it'll fight for `SingletonLock`, one of them crashes,
+   and you get orphan chromium processes. If you need to manually
+   inspect the browser, kill the daemon first.
+3. **Let transient failures clear naturally.** If a generation fails
+   with `timeout` or `selector_missing` once, don't panic-restart the
+   daemon. Wait a minute, retry within the same session. The logged-in
+   state and browser warmth are valuable; throwing them away on every
+   error just thrashes.
+4. **Don't burn jobs in a loop.** The built-in 5–15s cooldown between
+   jobs is deliberate. Don't add a wrapper script that hammers
+   generations back-to-back with no gap — that's textbook bot behavior.
+5. **If Google flags the account with "unusual activity", stop for
+   ~15 minutes** before trying again. Don't retry immediately. The
+   flag usually clears within that window. If it persists, log into
+   Flow as a human for a few minutes (browse projects, view images)
+   before resuming automation.
+6. **Keep the profile on one machine.** Don't try to sync
+   `~/.flow-daemon/profile/` across devices — Google's session binding
+   makes session cookies tied to a particular device fingerprint.
+   Copying the profile to another machine triggers re-verification.
+7. **Rotate your prompts through your own pool when doing batch work.**
+   For Content Hub's 12-segment batches, the PromptEnricher already
+   makes each prompt distinct because it's derived from different
+   script text. If you write your own batch tooling, do the same —
+   never send 12 identical prompts.
 
 ---
 
