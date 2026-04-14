@@ -27,7 +27,7 @@ npm install -g .          # makes `flow-cli` available globally
 ## First-time setup
 
 The daemon launches a dedicated Chromium with a persistent profile at
-`~/.content-hub/flow-profile/`. On the first run it'll be logged-out;
+`~/.flow-daemon/profile/`. On the first run it'll be logged-out;
 sign in to your Google account in that Chromium window once and the
 session is saved forever.
 
