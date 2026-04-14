@@ -5,9 +5,20 @@ const { runJob, closeBrowser } = require('./lib/flow');
 
 const VERSION = '0.1.0';
 
+// Idle auto-shutdown: after N minutes of no activity (queue empty + worker
+// idle + no enqueues), the daemon closes Chromium cleanly and exits. The
+// CLI's auto-start handles bringing it back up on the next `flow-cli
+// generate` call. Set FLOW_DAEMON_IDLE_TIMEOUT_MIN=0 to disable.
+const IDLE_TIMEOUT_MIN = parseInt(process.env.FLOW_DAEMON_IDLE_TIMEOUT_MIN || '30', 10);
+
 let browserConnected = false;
 let loggedIn = false;
 let workerBusy = false;
+let lastActivityAt = Date.now();
+
+function touchActivity() {
+  lastActivityAt = Date.now();
+}
 
 async function drainQueue() {
   if (workerBusy) return;
@@ -19,6 +30,7 @@ async function drainQueue() {
   const flowUrl = process.env.FLOW_URL_OVERRIDE || null;
 
   workerBusy = true;
+  touchActivity();
   queue.markRunning(jobId);
   const job = queue.get(jobId);
 
@@ -43,6 +55,7 @@ async function drainQueue() {
     if (e.error_code === 'not_logged_in') loggedIn = false;
   } finally {
     workerBusy = false;
+    touchActivity();
     // Cooldown between jobs so we don't look like a machine running a tight
     // loop. Random 5-15s jitter mimics a human glancing at the result before
     // starting the next prompt. Skipped in test mode (FLOW_URL_OVERRIDE is
@@ -99,6 +112,7 @@ function createServer() {
       });
     }
     const jobId = queue.enqueue({ prompt, project_id, segment_id, output_path });
+    touchActivity();
     setImmediate(drainQueue);
     res.json({ job_id: jobId, queue_position: queue.queuePositionOf(jobId) });
   });
@@ -131,6 +145,9 @@ function start({ port = parseInt(process.env.FLOW_DAEMON_PORT || '47321', 10),
   server.listen(port, () => {
     console.log(`[flow-daemon] listening on 127.0.0.1:${port}`);
     console.log(`[flow-daemon] root dir: ${rootDir}`);
+    if (IDLE_TIMEOUT_MIN > 0) {
+      console.log(`[flow-daemon] idle auto-shutdown after ${IDLE_TIMEOUT_MIN}min`);
+    }
   });
 
   // Graceful shutdown: close Chromium cleanly so the profile's SingletonLock
@@ -145,6 +162,23 @@ function start({ port = parseInt(process.env.FLOW_DAEMON_PORT || '47321', 10),
   };
   process.on('SIGINT', () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+  // Idle watchdog: every minute, if nothing is queued/running and we've been
+  // idle for >= IDLE_TIMEOUT_MIN minutes, shut down. The CLI's ensureDaemonUp
+  // restarts us on the next generate. Setting the env var to 0 disables it.
+  if (IDLE_TIMEOUT_MIN > 0) {
+    setInterval(async () => {
+      if (workerBusy || queue.depth() > 0) return;
+      const idleMs = Date.now() - lastActivityAt;
+      if (idleMs < IDLE_TIMEOUT_MIN * 60_000) return;
+      console.log(
+        `[flow-daemon] idle ${Math.round(idleMs / 60_000)}min ≥ ${IDLE_TIMEOUT_MIN}min — shutting down`
+      );
+      server.close();
+      await closeBrowser();
+      process.exit(0);
+    }, 60_000).unref();
+  }
 
   return server;
 }

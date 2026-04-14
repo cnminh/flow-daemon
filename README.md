@@ -149,6 +149,7 @@ flow-daemon/
 | `FLOW_DAEMON_URL` | `http://127.0.0.1:$PORT` | (CLI only) base URL when calling daemon |
 | `FLOW_ROOT_DIR` | parent of `server.js` (resolves to repo root) | base dir for *relative* output paths. Absolute `output_path` values bypass it entirely. Default Content Hub pattern lives under this dir. |
 | `FLOW_URL_OVERRIDE` | unset | (test only) navigate to this URL instead of `labs.google/fx/tools/flow/...` |
+| `FLOW_DAEMON_IDLE_TIMEOUT_MIN` | `30` | Minutes of idleness (queue empty + no running job + no enqueues) before the daemon shuts itself down cleanly. Set to `0` to disable. The CLI auto-restarts it on the next `flow-cli generate`. |
 
 For Content Hub use, the daemon should be started with `FLOW_ROOT_DIR`
 pointing at the Phoenix app root (so images land where Plug.Static can
