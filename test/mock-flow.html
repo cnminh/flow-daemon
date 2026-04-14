@@ -15,8 +15,10 @@
   <!-- Matches selectors.js: promptInput = [role="textbox"] -->
   <div role="textbox" contenteditable="true" data-placeholder="What do you want to create?"></div>
   <br/>
-  <!-- Matches selectors.js: generateButton = text=Create -->
-  <button onclick="mockGenerate()">Create</button>
+  <!-- Matches selectors.js: generateButton = text=arrow_forwardCreate
+       Real Flow renders a Material icon glyph "arrow_forward" before
+       "Create" inside the button; this mock mirrors that combined text. -->
+  <button onclick="mockGenerate()">arrow_forwardCreate</button>
 
   <div id="flow-outputs"></div>
 
