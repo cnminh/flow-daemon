@@ -27,6 +27,7 @@ async function drainQueue() {
       prompt: job.prompt,
       project_id: job.project_id,
       segment_id: job.segment_id,
+      output_path: job.output_path,
       rootDir,
       flowUrl,
     });
@@ -70,11 +71,20 @@ function createServer() {
   });
 
   app.post('/enqueue', (req, res) => {
-    const { prompt, project_id, segment_id } = req.body || {};
-    if (!prompt || typeof project_id !== 'number' || typeof segment_id !== 'number') {
-      return res.status(400).json({ error: 'prompt, project_id, segment_id required' });
+    const { prompt, project_id, segment_id, output_path } = req.body || {};
+    if (!prompt) {
+      return res.status(400).json({ error: 'prompt required' });
     }
-    const jobId = queue.enqueue({ prompt, project_id, segment_id });
+    // Either output_path OR (project_id + segment_id) must be provided so
+    // the daemon knows where to save the file.
+    const hasOutputPath = typeof output_path === 'string' && output_path.length > 0;
+    const hasIds = typeof project_id === 'number' && typeof segment_id === 'number';
+    if (!hasOutputPath && !hasIds) {
+      return res.status(400).json({
+        error: 'either output_path OR (project_id + segment_id) required',
+      });
+    }
+    const jobId = queue.enqueue({ prompt, project_id, segment_id, output_path });
     setImmediate(drainQueue);
     res.json({ job_id: jobId, queue_position: queue.queuePositionOf(jobId) });
   });
@@ -86,6 +96,7 @@ function createServer() {
       status: job.status,
       project_id: job.project_id,
       segment_id: job.segment_id,
+      output_path: job.output_path,
       image_path: job.image_path,
       error: job.error,
       error_code: job.error_code,
@@ -97,11 +108,11 @@ function createServer() {
   return require('http').createServer(app);
 }
 
-module.exports = { createServer };
-
-if (require.main === module) {
-  const port = parseInt(process.env.FLOW_DAEMON_PORT || '47321', 10);
-  const rootDir = process.env.FLOW_ROOT_DIR || path.resolve(__dirname, '..', '..');
+// Start the daemon: bind the HTTP server, install signal handlers, log.
+// Exported so flow-cli (or another embedder) can launch the daemon
+// without relying on `require.main === module` semantics.
+function start({ port = parseInt(process.env.FLOW_DAEMON_PORT || '47321', 10),
+                 rootDir = process.env.FLOW_ROOT_DIR || path.resolve(__dirname) } = {}) {
   const server = createServer();
   server.listen(port, () => {
     console.log(`[flow-daemon] listening on 127.0.0.1:${port}`);
@@ -109,7 +120,7 @@ if (require.main === module) {
   });
 
   // Graceful shutdown: close Chromium cleanly so the profile's SingletonLock
-  // gets released. If we skip this, the next daemon launch fails with
+  // gets released. Skipping this means the next launch fails with
   // "Failed to create ProcessSingleton" because the lock still points at
   // a now-dead PID.
   const shutdown = async (signal) => {
@@ -120,4 +131,12 @@ if (require.main === module) {
   };
   process.on('SIGINT', () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+  return server;
+}
+
+module.exports = { createServer, start };
+
+if (require.main === module) {
+  start();
 }

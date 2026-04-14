@@ -68,27 +68,33 @@ async function cmdGenerate(rawArgs) {
     process.exit(1);
   }
 
-  // When --project-id / --segment-id are omitted, run in standalone mode:
-  // the daemon still receives a project/segment tuple, but we synthesize
-  // project_id = 0 (reserved for standalone) and segment_id = unix timestamp.
-  // Callers that need images filed under a Content Hub segment (e.g. the
-  // Elixir FlowClient) should pass both flags explicitly.
+  // Three modes:
+  //   1. Standalone (default):   no flags → save to /tmp/flow_content/flow-<ts>.png
+  //   2. Custom output path:     --output /some/path.png  (absolute or relative to daemon's FLOW_ROOT_DIR)
+  //   3. Content Hub integration: --project-id N --segment-id N  (legacy path pattern)
   const projectFlag = flags['project-id'];
   const segmentFlag = flags['segment-id'];
-  const standalone = projectFlag === undefined && segmentFlag === undefined;
+  const outputFlag = flags.output;
 
-  let projectId, segmentId;
-  if (standalone) {
-    projectId = 0;
-    segmentId = Math.floor(Date.now() / 1000);
-  } else {
-    projectId = parseInt(projectFlag, 10);
-    segmentId = parseInt(segmentFlag, 10);
+  let bodyFields;
+  let modeLabel;
+  if (outputFlag) {
+    bodyFields = { output_path: outputFlag };
+    modeLabel = `output=${outputFlag}`;
+  } else if (projectFlag !== undefined || segmentFlag !== undefined) {
+    const projectId = parseInt(projectFlag, 10);
+    const segmentId = parseInt(segmentFlag, 10);
     if (!Number.isFinite(projectId) || !Number.isFinite(segmentId)) {
       console.error('error: --project-id and --segment-id must both be integers when provided');
-      console.error('       omit both to run in standalone mode');
+      console.error('       omit both (or use --output) to run in standalone mode');
       process.exit(1);
     }
+    bodyFields = { project_id: projectId, segment_id: segmentId };
+    modeLabel = `project=${projectId} segment=${segmentId}`;
+  } else {
+    const ts = Math.floor(Date.now() / 1000);
+    bodyFields = { output_path: `/tmp/flow_content/flow-${ts}.png` };
+    modeLabel = `standalone → ${bodyFields.output_path}`;
   }
 
   let enqueueRes;
@@ -96,11 +102,7 @@ async function cmdGenerate(rawArgs) {
     enqueueRes = await fetch(`${URL}/enqueue`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        prompt: prompt.trim(),
-        project_id: projectId,
-        segment_id: segmentId,
-      }),
+      body: JSON.stringify({ prompt: prompt.trim(), ...bodyFields }),
     });
   } catch (e) {
     console.error(`daemon not reachable on ${URL}: ${e.message}`);
@@ -114,8 +116,7 @@ async function cmdGenerate(rawArgs) {
 
   const { job_id } = await enqueueRes.json();
   if (!flags.quiet && !flags.json) {
-    const mode = standalone ? 'standalone' : `project=${projectId} segment=${segmentId}`;
-    console.error(`[flow-cli] enqueued ${job_id} (${mode}), polling...`);
+    console.error(`[flow-cli] enqueued ${job_id} (${modeLabel}), polling...`);
   }
 
   const startTime = Date.now();
@@ -198,14 +199,16 @@ Usage:
   flow-cli generate [PROMPT] [flags]           Enqueue, wait, print image_path
 
 Generate flags:
-  --project-id N      Content Hub project id (pair with --segment-id)
-  --segment-id N      Content Hub segment id (pair with --project-id)
-                      Omit both for standalone mode: project_id=0 and
-                      segment_id=<timestamp>. Image lands under
-                      priv/uploads/video_projects/0/segments/<ts>/flow.png
+  --output PATH       save the generated image to PATH (absolute or relative
+                      to the daemon's FLOW_ROOT_DIR). Takes precedence over
+                      --project-id / --segment-id.
+  --project-id N      Content Hub project id (pair with --segment-id) —
+  --segment-id N        saves to priv/uploads/video_projects/<p>/segments/<s>/flow.png
   --prompt TEXT       prompt (or use positional arg, or pipe via stdin)
   --json              print full status JSON instead of just the image path
   --quiet             suppress progress messages on stderr
+
+Default (no flags): standalone mode. Image saved to /tmp/flow_content/flow-<ts>.png
 
 Env:
   FLOW_DAEMON_PORT    HTTP port the daemon listens on (default 47321)
@@ -218,9 +221,10 @@ Examples:
 
   # In another:
   flow-cli health
-  flow-cli generate "a red apple on wood, 16:9"                # standalone
-  echo "a sunset" | flow-cli generate                          # standalone, stdin
-  flow-cli generate "a brain" --project-id 1 --segment-id 42   # save for Content Hub
+  flow-cli generate "a red apple on wood, 16:9"                # → /tmp/flow_content/flow-<ts>.png
+  echo "a sunset" | flow-cli generate                          # stdin prompt, standalone
+  flow-cli generate "a cat" --output ~/Pictures/cat.png        # explicit path
+  flow-cli generate "a brain" --project-id 1 --segment-id 42   # Content Hub path
   flow-cli generate "a brain" --project-id 1 --segment-id 42 --json
 
 Exit codes:
