@@ -22,6 +22,7 @@ async function main() {
   switch (cmd) {
     case 'daemon': return runDaemon();
     case 'health': return cmdHealth();
+    case 'status': return cmdStatus();
     case 'generate': return cmdGenerate(args);
     case 'help':
     case '--help':
@@ -54,6 +55,40 @@ async function cmdHealth() {
   }
   const body = await res.json();
   console.log(JSON.stringify(body, null, 2));
+}
+
+// Short, human-readable snapshot: is the daemon busy right now?
+async function cmdStatus() {
+  let body;
+  try {
+    const res = await fetch(`${URL}/health`);
+    body = await res.json();
+  } catch (e) {
+    console.error(`daemon not reachable on ${URL}: ${e.message}`);
+    process.exit(2);
+  }
+
+  if (body.worker_busy && body.current_job) {
+    const j = body.current_job;
+    const startedMs = j.started_at ? Date.now() - new Date(j.started_at).getTime() : 0;
+    const elapsed = Math.floor(startedMs / 1000);
+    console.log(`busy: generating (${elapsed}s elapsed)`);
+    console.log(`  job_id: ${j.job_id}`);
+    console.log(`  prompt: ${j.prompt || ''}`);
+    if (j.output_path) console.log(`  target: ${j.output_path}`);
+    else if (j.project_id !== undefined)
+      console.log(`  target: project=${j.project_id} segment=${j.segment_id}`);
+    if (body.queue_depth > 0) console.log(`  queued: ${body.queue_depth} more`);
+  } else if (body.queue_depth > 0) {
+    // Shouldn't normally happen — worker kicks in immediately — but possible
+    // during the brief window between enqueue and drainQueue firing.
+    console.log(`idle but ${body.queue_depth} job(s) queued (worker about to start)`);
+  } else {
+    console.log('idle');
+  }
+
+  if (!body.browser_connected) console.log('  warn: browser_connected=false');
+  if (!body.logged_in) console.log('  warn: logged_in=false');
 }
 
 async function cmdGenerate(rawArgs) {
@@ -195,7 +230,8 @@ function printHelp() {
 
 Usage:
   flow-cli daemon                              Start the HTTP daemon (foreground)
-  flow-cli health                              Print daemon health JSON
+  flow-cli health                              Print full daemon health JSON
+  flow-cli status                              Human-readable: idle or busy+elapsed
   flow-cli generate [PROMPT] [flags]           Enqueue, wait, print image_path
 
 Generate flags:

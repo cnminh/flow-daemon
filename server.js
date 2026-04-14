@@ -61,11 +61,25 @@ function createServer() {
   app.use(express.json());
 
   app.get('/health', (req, res) => {
+    const current = queue.currentJob();
     res.json({
       ok: true,
       browser_connected: browserConnected,
       logged_in: loggedIn,
+      worker_busy: workerBusy,
       queue_depth: queue.depth(),
+      current_job: current
+        ? {
+            job_id: current.job_id,
+            prompt: current.prompt && current.prompt.length > 120
+              ? current.prompt.slice(0, 120) + '...'
+              : current.prompt,
+            started_at: current.started_at,
+            output_path: current.output_path,
+            project_id: current.project_id,
+            segment_id: current.segment_id,
+          }
+        : null,
       version: VERSION,
     });
   });
