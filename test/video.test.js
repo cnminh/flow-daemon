@@ -96,3 +96,90 @@ test('video.runJob fails with extend_failed at index 1 when clip 2 does not rend
     fs.rmSync(outputDir, { recursive: true, force: true });
   }
 });
+
+test('video.runJob with valid --frame uploads and produces mp4', async () => {
+  require('../lib/queue').reset();
+
+  const { runJob } = require('../lib/video');
+  const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'flow-video-test-'));
+  const outputPath = path.join(outputDir, 'with-frame.mp4');
+
+  // Write a tiny valid 1x1 red PNG.
+  const pngBytes = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==',
+    'base64'
+  );
+  const framePath = path.join(outputDir, 'hero.png');
+  fs.writeFileSync(framePath, pngBytes);
+
+  try {
+    const result = await runJob({
+      prompts: [randomPrompt()],
+      frame_path: framePath,
+      output_path: outputPath,
+      flowUrl: MOCK_URL,
+      timeoutMs: 10_000,
+    });
+
+    assert.strictEqual(result.video_path, outputPath);
+    assert.ok(fs.existsSync(outputPath));
+  } finally {
+    fs.rmSync(outputDir, { recursive: true, force: true });
+  }
+});
+
+test('video.runJob rejects missing frame with frame_invalid', async () => {
+  require('../lib/queue').reset();
+
+  const { runJob } = require('../lib/video');
+  const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'flow-video-test-'));
+
+  try {
+    await assert.rejects(
+      async () => {
+        await runJob({
+          prompts: [randomPrompt()],
+          frame_path: '/does/not/exist.png',
+          output_path: path.join(outputDir, 'x.mp4'),
+          flowUrl: MOCK_URL,
+          timeoutMs: 5_000,
+        });
+      },
+      (err) => {
+        assert.strictEqual(err.error_code, 'frame_invalid');
+        return true;
+      }
+    );
+  } finally {
+    fs.rmSync(outputDir, { recursive: true, force: true });
+  }
+});
+
+test('video.runJob rejects non-image frame path with frame_invalid', async () => {
+  require('../lib/queue').reset();
+
+  const { runJob } = require('../lib/video');
+  const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'flow-video-test-'));
+  const notAnImage = path.join(outputDir, 'notes.txt');
+  fs.writeFileSync(notAnImage, 'hello world');
+
+  try {
+    await assert.rejects(
+      async () => {
+        await runJob({
+          prompts: [randomPrompt()],
+          frame_path: notAnImage,
+          output_path: path.join(outputDir, 'x.mp4'),
+          flowUrl: MOCK_URL,
+          timeoutMs: 5_000,
+        });
+      },
+      (err) => {
+        assert.strictEqual(err.error_code, 'frame_invalid');
+        return true;
+      }
+    );
+  } finally {
+    fs.rmSync(outputDir, { recursive: true, force: true });
+  }
+});
