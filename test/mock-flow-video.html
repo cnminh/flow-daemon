@@ -63,7 +63,9 @@
         const extend = document.createElement('button');
         extend.className = 'extend-btn';
         extend.textContent = 'Extend';
-        extend.onclick = mockCreate;
+        // Clicking Extend opens the extend panel in real Flow; generation
+        // is triggered separately by the main Create button. This mock is
+        // a no-op to mirror that UX (only mockCreate/Create generates clips).
 
         wrap.appendChild(video);
         wrap.appendChild(extend);
