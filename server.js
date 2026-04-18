@@ -33,17 +33,18 @@ async function drainQueue() {
   touchActivity();
   queue.markRunning(jobId);
   const job = queue.get(jobId);
+  const p = job.payload;
 
   try {
-    const { image_path } = await runJob({
-      prompt: job.prompt,
-      project_id: job.project_id,
-      segment_id: job.segment_id,
-      output_path: job.output_path,
+    const result = await runJob({
+      prompt: p.prompt,
+      project_id: p.project_id,
+      segment_id: p.segment_id,
+      output_path: p.output_path,
       rootDir,
       flowUrl,
     });
-    queue.markDone(jobId, { image_path });
+    queue.markDone(jobId, result);
     browserConnected = true;
     loggedIn = true;
   } catch (e) {
@@ -85,13 +86,14 @@ function createServer() {
       current_job: current
         ? {
             job_id: current.job_id,
-            prompt: current.prompt && current.prompt.length > 120
-              ? current.prompt.slice(0, 120) + '...'
-              : current.prompt,
+            type: current.payload.type || 'image',
+            prompt: current.payload.prompt && current.payload.prompt.length > 120
+              ? current.payload.prompt.slice(0, 120) + '...'
+              : current.payload.prompt,
             started_at: current.started_at,
-            output_path: current.output_path,
-            project_id: current.project_id,
-            segment_id: current.segment_id,
+            output_path: current.payload.output_path,
+            project_id: current.payload.project_id,
+            segment_id: current.payload.segment_id,
           }
         : null,
       version: VERSION,
@@ -112,7 +114,13 @@ function createServer() {
         error: 'either output_path OR (project_id + segment_id) required',
       });
     }
-    const jobId = queue.enqueue({ prompt, project_id, segment_id, output_path });
+    const jobId = queue.enqueue({
+      type: 'image',
+      prompt,
+      project_id,
+      segment_id,
+      output_path: output_path || null,
+    });
     touchActivity();
     setImmediate(drainQueue);
     res.json({ job_id: jobId, queue_position: queue.queuePositionOf(jobId) });
@@ -121,12 +129,15 @@ function createServer() {
   app.get('/status/:jobId', (req, res) => {
     const job = queue.get(req.params.jobId);
     if (!job) return res.status(404).json({ error: 'unknown job' });
+    const p = job.payload;
+    const r = job.result || {};
     res.json({
       status: job.status,
-      project_id: job.project_id,
-      segment_id: job.segment_id,
-      output_path: job.output_path,
-      image_path: job.image_path,
+      type: p.type || 'image',
+      project_id: p.project_id,
+      segment_id: p.segment_id,
+      output_path: p.output_path,
+      image_path: r.image_path || null,
       error: job.error,
       error_code: job.error_code,
       started_at: job.started_at,
