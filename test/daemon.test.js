@@ -144,7 +144,7 @@ test('runJob against mock fixture downloads first image to rootDir', async () =>
   // Test isolation: clear any leftover queue state from previous tests
   require('../lib/queue').reset();
 
-  const { runJob } = require('../lib/flow.js');
+  const { runJob } = require('../lib/image.js');
 
   const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'flow-daemon-test-'));
 

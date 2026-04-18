@@ -1,7 +1,7 @@
 const express = require('express');
 const path = require('node:path');
 const queue = require('./lib/queue');
-const { runJob, closeBrowser } = require('./lib/flow');
+const { runJob, closeBrowser } = require('./lib/image');
 
 const VERSION = '0.1.0';
 
