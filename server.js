@@ -1,9 +1,11 @@
 const express = require('express');
 const path = require('node:path');
 const queue = require('./lib/queue');
-const { runJob, closeBrowser } = require('./lib/image');
+const imageRunner = require('./lib/image');
+const videoRunner = require('./lib/video');
+const { closeBrowser } = require('./lib/browser');
 
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
 
 // Idle auto-shutdown: after N minutes of no activity (queue empty + worker
 // idle + no enqueues), the daemon closes Chromium cleanly and exits. The
@@ -25,7 +27,6 @@ async function drainQueue() {
   const jobId = queue.shiftNext();
   if (!jobId) return;
 
-  // Read env vars at call time so tests can set them before enqueueing.
   const rootDir = process.env.FLOW_ROOT_DIR || path.resolve(__dirname, '..', '..');
   const flowUrl = process.env.FLOW_URL_OVERRIDE || null;
 
@@ -36,14 +37,26 @@ async function drainQueue() {
   const p = job.payload;
 
   try {
-    const result = await runJob({
-      prompt: p.prompt,
-      project_id: p.project_id,
-      segment_id: p.segment_id,
-      output_path: p.output_path,
-      rootDir,
-      flowUrl,
-    });
+    let result;
+    if (p.type === 'video') {
+      result = await videoRunner.runJob({
+        prompts: p.prompts,
+        frame_path: p.frame_path || null,
+        output_path: p.output_path,
+        flowUrl,
+        model: p.model,
+        aspect: p.aspect,
+      });
+    } else {
+      result = await imageRunner.runJob({
+        prompt: p.prompt,
+        project_id: p.project_id,
+        segment_id: p.segment_id,
+        output_path: p.output_path,
+        rootDir,
+        flowUrl,
+      });
+    }
     queue.markDone(jobId, result);
     browserConnected = true;
     loggedIn = true;
@@ -51,6 +64,8 @@ async function drainQueue() {
     queue.markError(jobId, {
       error: e.message || String(e),
       error_code: e.error_code || 'selector_missing',
+      failed_at_index: e.failed_at_index,
+      completed_prompts: e.completed_prompts,
     });
     if (e.error_code === 'browser_crashed') browserConnected = false;
     if (e.error_code === 'profile_locked') browserConnected = false;
@@ -58,10 +73,6 @@ async function drainQueue() {
   } finally {
     workerBusy = false;
     touchActivity();
-    // Cooldown between jobs so we don't look like a machine running a tight
-    // loop. Random 5-15s jitter mimics a human glancing at the result before
-    // starting the next prompt. Skipped in test mode (FLOW_URL_OVERRIDE is
-    // set) so the mock-fixture test suite doesn't take forever.
     if (queue.depth() > 0 && !flowUrl) {
       const cooldown = 5000 + Math.floor(Math.random() * 10_000);
       setTimeout(drainQueue, cooldown);
@@ -77,36 +88,69 @@ function createServer() {
 
   app.get('/health', (req, res) => {
     const current = queue.currentJob();
+    let currentJobInfo = null;
+    if (current) {
+      const p = current.payload;
+      currentJobInfo = {
+        job_id: current.job_id,
+        type: p.type || 'image',
+        started_at: current.started_at,
+        output_path: p.output_path,
+      };
+      if (p.type === 'video') {
+        currentJobInfo.prompt_count = p.prompts ? p.prompts.length : null;
+      } else {
+        currentJobInfo.prompt = p.prompt && p.prompt.length > 120
+          ? p.prompt.slice(0, 120) + '...'
+          : p.prompt;
+        currentJobInfo.project_id = p.project_id;
+        currentJobInfo.segment_id = p.segment_id;
+      }
+    }
     res.json({
       ok: true,
       browser_connected: browserConnected,
       logged_in: loggedIn,
       worker_busy: workerBusy,
       queue_depth: queue.depth(),
-      current_job: current
-        ? {
-            job_id: current.job_id,
-            type: current.payload.type || 'image',
-            prompt: current.payload.prompt && current.payload.prompt.length > 120
-              ? current.payload.prompt.slice(0, 120) + '...'
-              : current.payload.prompt,
-            started_at: current.started_at,
-            output_path: current.payload.output_path,
-            project_id: current.payload.project_id,
-            segment_id: current.payload.segment_id,
-          }
-        : null,
+      current_job: currentJobInfo,
       version: VERSION,
     });
   });
 
   app.post('/enqueue', (req, res) => {
-    const { prompt, project_id, segment_id, output_path } = req.body || {};
+    const body = req.body || {};
+
+    // Discriminate by body shape: `prompts` array → video; `prompt` string → image.
+    if (Array.isArray(body.prompts)) {
+      const { prompts, frame_path, output_path, model, aspect } = body;
+      if (!prompts.every((p) => typeof p === 'string' && p.length > 0)) {
+        return res.status(400).json({ error: 'prompts must be non-empty strings' });
+      }
+      if (typeof output_path !== 'string' || !path.isAbsolute(output_path)) {
+        return res.status(400).json({ error: 'output_path required and must be absolute for video jobs' });
+      }
+      if (aspect && !['16:9', '9:16'].includes(aspect)) {
+        return res.status(400).json({ error: 'aspect must be "16:9" or "9:16"' });
+      }
+      const jobId = queue.enqueue({
+        type: 'video',
+        prompts,
+        frame_path: frame_path || null,
+        output_path,
+        model: model || null,
+        aspect: aspect || '16:9',
+      });
+      touchActivity();
+      setImmediate(drainQueue);
+      return res.json({ job_id: jobId, queue_position: queue.queuePositionOf(jobId) });
+    }
+
+    // Image path (unchanged back-compat).
+    const { prompt, project_id, segment_id, output_path } = body;
     if (!prompt) {
       return res.status(400).json({ error: 'prompt required' });
     }
-    // Either output_path OR (project_id + segment_id) must be provided so
-    // the daemon knows where to save the file.
     const hasOutputPath = typeof output_path === 'string' && output_path.length > 0;
     const hasIds = typeof project_id === 'number' && typeof segment_id === 'number';
     if (!hasOutputPath && !hasIds) {
@@ -131,17 +175,33 @@ function createServer() {
     if (!job) return res.status(404).json({ error: 'unknown job' });
     const p = job.payload;
     const r = job.result || {};
-    res.json({
+
+    const base = {
       status: job.status,
       type: p.type || 'image',
-      project_id: p.project_id,
-      segment_id: p.segment_id,
       output_path: p.output_path,
-      image_path: r.image_path || null,
       error: job.error,
       error_code: job.error_code,
       started_at: job.started_at,
       finished_at: job.finished_at,
+    };
+
+    if (p.type === 'video') {
+      return res.json({
+        ...base,
+        video_path: r.video_path || null,
+        prompt_count: r.prompt_count || (p.prompts ? p.prompts.length : null),
+        model: r.model || null,
+        aspect: r.aspect || null,
+        failed_at_index: job.failed_at_index,
+        completed_prompts: job.completed_prompts,
+      });
+    }
+    res.json({
+      ...base,
+      project_id: p.project_id,
+      segment_id: p.segment_id,
+      image_path: r.image_path || null,
     });
   });
 
