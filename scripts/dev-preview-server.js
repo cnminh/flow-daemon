@@ -15,43 +15,72 @@ const path = require('node:path');
 const fs = require('node:fs');
 
 const PORT = parseInt(process.argv[2] || process.env.FLOW_PREVIEW_PORT || '47399', 10);
+// Default binds localhost-only. Set FLOW_PREVIEW_HOST=0.0.0.0 to expose over
+// Tailscale / LAN so you can view screenshots + mp4s from phone/laptop.
+const HOST = process.env.FLOW_PREVIEW_HOST || '127.0.0.1';
 const ROOT = path.resolve(__dirname, '..', 'tmp', 'dev-preview');
 
 fs.mkdirSync(ROOT, { recursive: true });
 
 const app = express();
 
-// Directory listing at /
+// Directory listing at / — inlines images + videos so you can scroll through
+// without clicking each link. Ordered newest first.
 app.get('/', (req, res) => {
   const files = fs.readdirSync(ROOT).sort().reverse();
-  res.type('html').send(`
-    <!doctype html>
-    <html><head><title>flow-daemon dev preview</title>
-    <style>
-      body { font-family: sans-serif; max-width: 800px; margin: 2em auto; padding: 0 1em; }
-      li { margin: 0.5em 0; }
-      a { text-decoration: none; color: #0366d6; }
-      .ts { color: #666; font-size: 0.9em; margin-left: 0.5em; }
-    </style></head>
-    <body>
-    <h1>dev preview</h1>
-    <p>Serving <code>${ROOT}</code> — newest first.</p>
-    <ul>
-    ${files.map((f) => {
-      const st = fs.statSync(path.join(ROOT, f));
-      const when = st.mtime.toISOString().slice(0, 19).replace('T', ' ');
-      return `<li><a href="/${encodeURIComponent(f)}">${f}</a><span class="ts">${when}</span></li>`;
-    }).join('')}
-    </ul>
-    </body></html>
-  `);
+  const IMG_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp']);
+  const VID_EXTS = new Set(['.mp4', '.webm', '.mov']);
+  res.type('html').send(`<!doctype html>
+<html><head><title>flow-daemon dev preview</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 0; padding: 1em;
+    background: #111; color: #eee; }
+  h1 { margin: 0 0 0.3em; font-size: 1.2em; }
+  p { margin: 0 0 1em; color: #999; font-size: 0.85em; }
+  .item { background: #1c1c1c; border: 1px solid #333; border-radius: 8px;
+    margin: 0 0 1em; padding: 0.7em; }
+  .head { font-family: monospace; font-size: 0.8em; color: #9cf;
+    word-break: break-all; margin-bottom: 0.5em; }
+  .ts { color: #888; }
+  .item img, .item video { max-width: 100%; height: auto; display: block;
+    border-radius: 4px; background: #000; }
+  .item video { max-height: 480px; }
+  a { color: #9cf; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+</style></head>
+<body>
+<h1>dev preview</h1>
+<p><code>${ROOT}</code> — ${files.length} files, newest first.</p>
+${files.map((f) => {
+  const st = fs.statSync(path.join(ROOT, f));
+  const when = st.mtime.toISOString().slice(0, 19).replace('T', ' ');
+  const ext = path.extname(f).toLowerCase();
+  const href = `/${encodeURIComponent(f)}`;
+  let media = '';
+  if (IMG_EXTS.has(ext)) {
+    media = `<img src="${href}" loading="lazy" alt="${f}" />`;
+  } else if (VID_EXTS.has(ext)) {
+    media = `<video src="${href}" controls preload="metadata"></video>`;
+  }
+  return `<div class="item">
+    <div class="head"><a href="${href}">${f}</a> <span class="ts">${when}</span></div>
+    ${media}
+  </div>`;
+}).join('')}
+</body></html>`);
 });
 
 app.use(express.static(ROOT, { index: false }));
 
-app.listen(PORT, '127.0.0.1', () => {
+app.listen(PORT, HOST, () => {
   console.log(`[dev-preview] serving ${ROOT}`);
+  console.log(`[dev-preview] bind:      ${HOST}:${PORT}`);
   console.log(`[dev-preview] local:     http://127.0.0.1:${PORT}/`);
-  console.log(`[dev-preview] tailscale: https://mac-mini.tailf56d7b.ts.net:${PORT}/`);
+  if (HOST === '0.0.0.0') {
+    console.log(`[dev-preview] tailscale: http://mac-mini:${PORT}/   (or http://100.116.196.2:${PORT}/)`);
+  } else {
+    console.log(`[dev-preview] tailscale: (disabled — run with FLOW_PREVIEW_HOST=0.0.0.0 to expose)`);
+  }
   console.log(`[dev-preview] drop screenshots + mp4s into tmp/dev-preview/; list page shows newest first.`);
 });

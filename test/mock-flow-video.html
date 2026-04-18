@@ -23,13 +23,17 @@
        that combined text content. -->
   <button onclick="mockCreate()">arrow_forwardCreate</button>
 
-  <!-- Matches selectors.video.framesEntry = text=Frames -->
-  <button onclick="openFrames()">Frames</button>
+  <!-- Matches selectors.video.framesTab. Real Flow's Frames tab is a
+       popover slider with text "crop_freeFrames"; this mock mirrors it as
+       a flow_tab_slider_trigger button with "Frames" text. -->
+  <button class="flow_tab_slider_trigger" onclick="openFrames()">Frames</button>
   <input type="file" id="frame-input" accept="image/*" style="display:none" onchange="onFrameUpload(event)" />
   <div id="frame-preview-container"></div>
 
-  <!-- Matches selectors.video.downloadSceneButton = text=Download scene -->
-  <button id="download-btn" style="display:none" onclick="mockDownloadScene()">Download scene</button>
+  <!-- Matches selectors.video.downloadSceneButton. Real Flow's Download
+       button textContent is "downloadDownload" (Material icon + label);
+       this mock mirrors that combined text. -->
+  <button id="download-btn" style="display:none" onclick="mockDownloadScene()">downloadDownload</button>
 
   <div id="clips"></div>
 
