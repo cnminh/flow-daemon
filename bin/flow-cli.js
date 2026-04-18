@@ -16,16 +16,20 @@
 //   FLOW_ROOT_DIR      Where the daemon writes images (default cwd for CLI)
 //   FLOW_URL_OVERRIDE  Daemon-side: override https://labs.google/... URL
 
-const { spawn, execSync } = require('node:child_process');
 const path = require('node:path');
-const fs = require('node:fs');
 const os = require('node:os');
+const {
+  sleep,
+  parseFlags,
+  readStdin,
+  ensureDaemonUp,
+} = require('../lib/cli-shared');
 
 const PORT = process.env.FLOW_DAEMON_PORT || '47321';
 const URL = process.env.FLOW_DAEMON_URL || `http://127.0.0.1:${PORT}`;
 const LOG_DIR = path.join(os.homedir(), '.flow-daemon');
 const LOG_FILE = path.join(LOG_DIR, 'daemon.log');
-const DAEMON_STARTUP_TIMEOUT_MS = 15000;
+const SERVER_PATH = path.resolve(__dirname, '..', 'server.js');
 
 const cmd = process.argv[2];
 const args = process.argv.slice(3);
@@ -103,100 +107,6 @@ async function cmdStatus() {
   if (!body.logged_in) console.log('  warn: logged_in=false');
 }
 
-// --- daemon auto-start helpers ---
-
-async function isDaemonHealthy() {
-  try {
-    const r = await fetch(`${URL}/health`);
-    return r.ok;
-  } catch {
-    return false;
-  }
-}
-
-// If a process is holding PORT but not responding to HTTP, return its PID
-// (so we can kill it as a zombie). Otherwise null.
-function findProcessOnPort(port) {
-  try {
-    const out = execSync(`lsof -ti :${port}`, {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim();
-    if (!out) return null;
-    return parseInt(out.split(/\s+/)[0], 10) || null;
-  } catch {
-    return null; // lsof exits non-zero when nothing is bound
-  }
-}
-
-// Spawn `node server.js` detached and unref it so this CLI can exit
-// without killing the daemon. Logs go to ~/.flow-daemon/daemon.log.
-function spawnDaemon() {
-  fs.mkdirSync(LOG_DIR, { recursive: true });
-  const logFd = fs.openSync(LOG_FILE, 'a');
-  const serverPath = path.resolve(__dirname, '..', 'server.js');
-  const child = spawn(process.execPath, [serverPath], {
-    detached: true,
-    stdio: ['ignore', logFd, logFd],
-    env: process.env,
-  });
-  child.unref();
-  return child.pid;
-}
-
-// Make sure the daemon is reachable before we try to enqueue. If it's
-// already healthy, return fast. Otherwise: clear any zombie holding the
-// port, spawn a detached daemon, and poll /health until it responds.
-async function ensureDaemonUp() {
-  if (await isDaemonHealthy()) return;
-
-  const zombie = findProcessOnPort(PORT);
-  if (zombie) {
-    // Safeguard against racing with another CLI that just spawned a daemon
-    // and is mid-boot: retry /health a few times with a short delay before
-    // declaring the port-holder a zombie. A real daemon usually responds
-    // within a second or two of binding the port.
-    console.error(`[flow-cli] port ${PORT} held by PID ${zombie} — probing for 3s before deciding`);
-    let settledHealthy = false;
-    for (let i = 0; i < 6; i += 1) {
-      await sleep(500);
-      if (await isDaemonHealthy()) {
-        settledHealthy = true;
-        break;
-      }
-    }
-    if (settledHealthy) {
-      console.error(`[flow-cli] port ${PORT} was booting, now healthy — proceeding`);
-      return;
-    }
-    console.error(`[flow-cli] PID ${zombie} still not responding after probe — killing`);
-    try {
-      process.kill(zombie, 'SIGKILL');
-    } catch {
-      // Already dead or not owned by us
-    }
-    await sleep(1000);
-  }
-
-  console.error('[flow-cli] daemon not running — starting in background');
-  const pid = spawnDaemon();
-  console.error(`[flow-cli] daemon PID ${pid} (log: ${LOG_FILE})`);
-
-  const started = Date.now();
-  while (Date.now() - started < DAEMON_STARTUP_TIMEOUT_MS) {
-    await sleep(500);
-    if (await isDaemonHealthy()) {
-      const secs = Math.round((Date.now() - started) / 1000);
-      console.error(`[flow-cli] daemon ready after ${secs}s`);
-      return;
-    }
-  }
-
-  console.error(`[flow-cli] daemon did not respond within ${DAEMON_STARTUP_TIMEOUT_MS / 1000}s`);
-  console.error(`[flow-cli] check ${LOG_FILE} for errors`);
-  process.exit(2);
-}
-
 async function cmdGenerate(rawArgs) {
   const flags = parseFlags(rawArgs);
 
@@ -210,7 +120,7 @@ async function cmdGenerate(rawArgs) {
   }
 
   // Auto-start the daemon if it isn't already running.
-  await ensureDaemonUp();
+  await ensureDaemonUp({ port: PORT, url: URL, serverPath: SERVER_PATH, logDir: LOG_DIR, logFile: LOG_FILE });
 
   // Three modes:
   //   1. Standalone (default):   no flags → save to /tmp/flow_content/flow-<ts>.png
@@ -299,39 +209,6 @@ async function cmdGenerate(rawArgs) {
     }
     // queued or running → keep polling silently
   }
-}
-
-function parseFlags(args) {
-  const out = { _: [] };
-  for (let i = 0; i < args.length; i += 1) {
-    const a = args[i];
-    if (a.startsWith('--')) {
-      const key = a.slice(2);
-      const next = args[i + 1];
-      if (next === undefined || next.startsWith('--')) {
-        out[key] = true;
-      } else {
-        out[key] = next;
-        i += 1;
-      }
-    } else {
-      out._.push(a);
-    }
-  }
-  return out;
-}
-
-function readStdin() {
-  return new Promise((resolve) => {
-    let data = '';
-    process.stdin.setEncoding('utf8');
-    process.stdin.on('data', (chunk) => (data += chunk));
-    process.stdin.on('end', () => resolve(data));
-  });
-}
-
-function sleep(ms) {
-  return new Promise((r) => setTimeout(r, ms));
 }
 
 function printHelp() {
