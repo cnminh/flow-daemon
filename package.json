@@ -5,7 +5,8 @@
   "description": "Playwright-driven daemon + CLI for generating images via labs.google/flow",
   "main": "server.js",
   "bin": {
-    "flow-cli": "./bin/flow-cli.js"
+    "flow-cli": "./bin/flow-cli.js",
+    "flow-video-cli": "./bin/flow-video-cli.js"
   },
   "scripts": {
     "start": "node server.js",
