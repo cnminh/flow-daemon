@@ -65,32 +65,29 @@ test('video.runJob handles a 3-prompt extend chain (mock fixture)', async () => 
   }
 });
 
-test('video.runJob 3-prompt chain fails when mid-chain clip does not render', async () => {
+test('video.runJob fails with extend_failed at index 1 when clip 2 does not render', async () => {
   require('../lib/queue').reset();
 
   const { runJob } = require('../lib/video');
   const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'flow-video-test-'));
-  const outputPath = path.join(outputDir, 'should-not-exist.mp4');
+  const outputPath = path.join(outputDir, 'failed.mp4');
 
   try {
-    // ?failat=2 → the 2nd Create click produces no <video>, so the extend
-    // loop's waitForFunction on clip #2 must time out. This proves the
-    // extend loop actually ran (rather than the code short-circuiting
-    // after clip 1).
     await assert.rejects(
       async () => {
         await runJob({
           prompts: [randomPrompt(), randomPrompt(), randomPrompt()],
           output_path: outputPath,
+          // failat=2 → the 2nd Create click (first Extend's Create) produces
+          // no <video>, simulating a clip that never finishes rendering.
           flowUrl: MOCK_URL + '?failat=2',
           timeoutMs: 2_000,
         });
       },
       (err) => {
-        // Either extend_failed (Task 10 will refine this) or a generic
-        // timeout. What matters is that runJob DID NOT complete — which
-        // proves the extend loop ran and the missing clip 2 broke it.
-        assert.ok(err, 'should throw');
+        assert.strictEqual(err.error_code, 'extend_failed');
+        assert.strictEqual(err.failed_at_index, 1);
+        assert.strictEqual(err.completed_prompts, 1);
         return true;
       }
     );
