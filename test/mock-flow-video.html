@@ -1,0 +1,109 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Mock Flow — Video</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    [role="textbox"] { width: 400px; min-height: 40px; border: 1px solid #ccc;
+      padding: 8px; outline: none; }
+    #clips video { width: 200px; height: 120px; margin: 4px; display: block; }
+    .extend-btn { margin: 4px 0; }
+  </style>
+</head>
+<body>
+  <h1>Mock Flow — Video</h1>
+
+  <!-- Matches selectors.common.promptInput = [role="textbox"] -->
+  <div role="textbox" contenteditable="true" data-placeholder="Describe your video"></div>
+  <br/>
+
+  <!-- Matches selectors.common.generateButton = text=arrow_forwardCreate
+       Real Flow renders the "arrow_forward" glyph prefix; this mock mirrors
+       that combined text content. -->
+  <button onclick="mockCreate()">arrow_forwardCreate</button>
+
+  <!-- Matches selectors.video.framesEntry = text=Frames -->
+  <button onclick="openFrames()">Frames</button>
+  <input type="file" id="frame-input" accept="image/*" style="display:none" onchange="onFrameUpload(event)" />
+  <div id="frame-preview-container"></div>
+
+  <!-- Matches selectors.video.downloadSceneButton = text=Download scene -->
+  <button id="download-btn" style="display:none" onclick="mockDownloadScene()">Download scene</button>
+
+  <div id="clips"></div>
+
+  <script>
+    // Query params:
+    //   ?failat=N  — the Nth Create click produces no <video>, simulating a
+    //                clip that didn't render. Used to test extend_failed.
+    //   ?rejectframe=1 — frame upload is rejected (no preview appears).
+    const params = new URLSearchParams(location.search);
+    const failat = parseInt(params.get('failat') || '-1', 10);
+    const rejectFrame = params.get('rejectframe') === '1';
+
+    let clipCount = 0;
+
+    function mockCreate() {
+      clipCount += 1;
+      // Simulate a clip that never finishes rendering: skip adding the <video>.
+      if (clipCount === failat) return;
+
+      // Simulate real Flow's brief render delay (kept short for test speed).
+      setTimeout(() => {
+        const clips = document.getElementById('clips');
+        const wrap = document.createElement('div');
+
+        const video = document.createElement('video');
+        // Unique "src" so the src-diff detection in lib/video.js picks it up.
+        // Not a real video — tests only check element presence + src change.
+        video.src = 'data:video/mp4;base64,AAAAHGZ0eXBtcDQyAAAAAW1wNDJtcDQxaXNvbQ==#clip-' + clipCount;
+        video.setAttribute('data-clip-index', String(clipCount));
+
+        const extend = document.createElement('button');
+        extend.className = 'extend-btn';
+        extend.textContent = 'Extend';
+        extend.onclick = mockCreate;
+
+        wrap.appendChild(video);
+        wrap.appendChild(extend);
+        clips.appendChild(wrap);
+
+        document.getElementById('download-btn').style.display = 'inline-block';
+      }, 100);
+    }
+
+    function openFrames() {
+      document.getElementById('frame-input').click();
+    }
+
+    function onFrameUpload(ev) {
+      const file = ev.target.files[0];
+      if (!file) return;
+      if (rejectFrame) return; // simulate Flow rejecting the upload
+      const preview = document.getElementById('frame-preview-container');
+      preview.innerHTML = '';
+      const el = document.createElement('div');
+      el.setAttribute('data-frame-preview', '1');
+      el.textContent = 'Frame uploaded: ' + file.name;
+      preview.appendChild(el);
+    }
+
+    function mockDownloadScene() {
+      // Trigger a Playwright "download" event by programmatically clicking
+      // an <a download>. The blob bytes are a tiny stub — tests only check
+      // size > 0 and the download path matches output_path.
+      const blob = new Blob([new Uint8Array([0x00, 0x00, 0x00, 0x20, 0x66, 0x74, 0x79, 0x70])],
+        { type: 'video/mp4' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'scene.mp4';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+  </script>
+</body>
+</html>
