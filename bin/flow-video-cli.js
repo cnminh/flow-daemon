@@ -71,9 +71,19 @@ async function cmdGenerate(rawArgs) {
     outputPath = path.resolve(process.cwd(), outputPath);
   }
 
-  // Validate aspect / model if supplied.
+  // --orientation is a user-friendly alias that maps to --aspect.
+  // portrait → 9:16, landscape → 16:9.
+  if (flags.orientation !== undefined) {
+    const o = String(flags.orientation).toLowerCase();
+    if (o === 'portrait') flags.aspect = '9:16';
+    else if (o === 'landscape') flags.aspect = '16:9';
+    else {
+      console.error('error: --orientation must be "portrait" or "landscape"');
+      process.exit(1);
+    }
+  }
   if (flags.aspect && !['16:9', '9:16'].includes(flags.aspect)) {
-    console.error('error: --aspect must be "16:9" or "9:16"');
+    console.error('error: --aspect must be "16:9" or "9:16" (or use --orientation portrait|landscape)');
     process.exit(1);
   }
 
@@ -87,7 +97,7 @@ async function cmdGenerate(rawArgs) {
       frame_path: flags.frame || null,
       output_path: outputPath,
       model: flags.model || null,
-      aspect: flags.aspect || '16:9',
+      aspect: flags.aspect || '9:16',
     }, null, 2));
     process.exit(0);
   }
@@ -188,7 +198,13 @@ Flags:
                       Default: /tmp/flow_video/flow-<unix-ts>.mp4
   --frame PATH        path to .png or .jpg to seed the first clip (frames-to-video)
   --model NAME        video model (veo-3, veo-3-fast, veo-2). Default: random
-  --aspect 16:9|9:16  aspect ratio. Default: 16:9
+  --orientation PORTRAIT|LANDSCAPE  video orientation. Default: portrait.
+                                    Maps to --aspect 9:16 or 16:9.
+  --aspect 9:16|16:9  aspect ratio (lower-level alias). Default: 9:16 (portrait).
+                      Only applies to the first clip of a scene; extends
+                      inherit the scene's aspect.
+  --overlap SECONDS   trim amount at each extend seam (default 1.0s — Veo's
+                      extend replays the prior clip's tail).
   --dry-run           print the payload that would be sent and exit 0 (no quota burn)
   --json              print full status JSON instead of just the video path
   --quiet             suppress progress messages on stderr

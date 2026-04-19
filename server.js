@@ -143,7 +143,7 @@ function createServer() {
         frame_path: frame_path || null,
         output_path,
         model: model || null,
-        aspect: aspect || '16:9',
+        aspect: aspect || '9:16',
         overlap_seconds,
       });
       touchActivity();
