@@ -159,6 +159,31 @@ async function handle(line) {
         if (previewCopy !== outPath) fs.copyFileSync(outPath, previewCopy);
         result = `Downloaded ${bytes.length} bytes → ${outPath} (also ${path.basename(previewCopy)} in preview)`;
       }
+    } else if (name === 'download-modal') {
+      // Click Flow's Download button → wait for modal → click 720p or
+      // 1080p → catch download event → save. Mirrors production runJob
+      // download path.
+      const parts = arg.split(' ');
+      const quality = parts[0] || '1080p';
+      const outPath = parts.slice(1).join(' ') || path.join(OUT_DIR, `stepper-stitched-${quality}-${Date.now()}.mp4`);
+      if (quality !== '720p' && quality !== '1080p') {
+        result = `REFUSED: only 720p/1080p allowed (got ${quality})`;
+      } else {
+        const downloadBtn = await page.waitForSelector(selectors.video.downloadSceneButton, { timeout: 5000 });
+        await downloadBtn.click();
+        await sleep(1500);
+        const qualitySel = selectors.video.downloadQualityOption(quality);
+        const [download] = await Promise.all([
+          page.waitForEvent('download', { timeout: 60_000 }),
+          page.locator(qualitySel).first().click(),
+        ]);
+        fs.mkdirSync(path.dirname(outPath), { recursive: true });
+        await download.saveAs(outPath);
+        const size = fs.statSync(outPath).size;
+        const previewCopy = path.join(OUT_DIR, path.basename(outPath));
+        if (previewCopy !== outPath) fs.copyFileSync(outPath, previewCopy);
+        result = `Downloaded ${size} bytes (${quality}) → ${outPath}`;
+      }
     } else if (name === 'download-src') {
       // Usage: download-src <URL> [PATH]
       // Fetch a specific URL via the Playwright context (auth-aware) and

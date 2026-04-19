@@ -46,6 +46,7 @@ async function drainQueue() {
         flowUrl,
         model: p.model,
         aspect: p.aspect,
+        overlap_seconds: p.overlap_seconds,
       });
     } else {
       result = await imageRunner.runJob({
@@ -123,7 +124,7 @@ function createServer() {
 
     // Discriminate by body shape: `prompts` array → video; `prompt` string → image.
     if (Array.isArray(body.prompts)) {
-      const { prompts, frame_path, output_path, model, aspect } = body;
+      const { prompts, frame_path, output_path, model, aspect, overlap_seconds } = body;
       if (!prompts.every((p) => typeof p === 'string' && p.length > 0)) {
         return res.status(400).json({ error: 'prompts must be non-empty strings' });
       }
@@ -133,6 +134,9 @@ function createServer() {
       if (aspect && !['16:9', '9:16'].includes(aspect)) {
         return res.status(400).json({ error: 'aspect must be "16:9" or "9:16"' });
       }
+      if (overlap_seconds !== undefined && (typeof overlap_seconds !== 'number' || overlap_seconds < 0)) {
+        return res.status(400).json({ error: 'overlap_seconds must be a non-negative number' });
+      }
       const jobId = queue.enqueue({
         type: 'video',
         prompts,
@@ -140,6 +144,7 @@ function createServer() {
         output_path,
         model: model || null,
         aspect: aspect || '16:9',
+        overlap_seconds,
       });
       touchActivity();
       setImmediate(drainQueue);

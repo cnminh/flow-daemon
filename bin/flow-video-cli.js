@@ -102,6 +102,14 @@ async function cmdGenerate(rawArgs) {
   if (flags.frame) body.frame_path = path.resolve(flags.frame);
   if (flags.model) body.model = flags.model;
   if (flags.aspect) body.aspect = flags.aspect;
+  if (flags.overlap !== undefined) {
+    const val = parseFloat(flags.overlap);
+    if (!Number.isFinite(val) || val < 0) {
+      console.error('error: --overlap must be a non-negative number (seconds)');
+      process.exit(1);
+    }
+    body.overlap_seconds = val;
+  }
 
   let enqueueRes;
   try {
