@@ -41,14 +41,9 @@ try { fs.unlinkSync(OUT); } catch {}
   await page.goto(FLOW_URL, { waitUntil: 'networkidle', timeout: 60_000 });
   await page.waitForTimeout(3000);
 
-  console.log('[dl-only] clicking first <video> clip (newest = lighthouse)...');
-  await page.locator('video').first().click({ timeout: 5000, force: true }).catch(async (e) => {
-    console.log(`  direct click failed (${e.message.slice(0, 80)}); trying parent`);
-    await page.locator('video').first().locator('xpath=..').click({ timeout: 5000, force: true });
-  });
-  await page.waitForTimeout(3000);
-
-  // --- This mirrors the exact block now in lib/video.js runJob ---
+  // NEW: mirror the post-fix runJob — do NOT click into detail view;
+  // read videos[0] directly from the grid (page.goto already landed here).
+  // This validates the navigate-to-grid fix in commit 71fd93a.
   const videoSrcs = await page.$$eval(selectors.video.allVideos, (els) =>
     els.map((el) => el.currentSrc || el.src).filter((s) => !!s)
   );
