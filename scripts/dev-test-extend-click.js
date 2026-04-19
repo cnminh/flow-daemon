@@ -63,11 +63,22 @@ function stamp() {
   await page.screenshot({ path: path.join(OUT_DIR, `${stamp()}-extclick-02-after-extend-click.png`) });
 
   console.log('[ext-click] STEP 4: verify we\'re in "ready to type extend prompt" state');
-  // Expect: prompt input visible + Create button visible + (new state markers)
+  // Expect: prompt input visible + exactly one enabled Create button visible
   const promptVisible = await page.locator(selectors.common.promptInput).isVisible().catch(() => false);
-  const createVisible = await page.locator(selectors.common.generateButton).isVisible().catch(() => false);
   console.log(`  promptInput visible: ${promptVisible}`);
-  console.log(`  Create button visible: ${createVisible}`);
+
+  // Diagnose the TWO Create buttons that live in extend mode. We want the
+  // refined selector (:not([disabled])) to pick exactly one visible + enabled.
+  const allCreateCount = await page.locator('button:has-text("arrow_forwardCreate")').count();
+  const enabledCreateCount = await page.locator(selectors.common.generateButton).count();
+  console.log(`  all Create buttons (enabled+disabled): ${allCreateCount}`);
+  console.log(`  enabled Create buttons (refined selector): ${enabledCreateCount}`);
+  if (enabledCreateCount === 1) {
+    const h = page.locator(selectors.common.generateButton).first();
+    const isVis = await h.isVisible().catch(() => false);
+    const isEnabled = await h.isEnabled().catch(() => false);
+    console.log(`  refined match: visible=${isVis} enabled=${isEnabled}`);
+  }
 
   // Enumerate what's visible — to understand the post-Extend-click UI.
   console.log('\n[ext-click] visible short-text buttons in extend-prompt state:');
@@ -79,7 +90,7 @@ function stamp() {
     console.log(`  btn: ${JSON.stringify(text)}`);
   }
 
-  if (promptVisible && createVisible) {
+  if (promptVisible && enabledCreateCount === 1) {
     console.log('\n[ext-click] SUCCESS — extend-prompt UI is ready. Closing without clicking Create.');
   } else {
     console.log('\n[ext-click] PARTIAL — Extend clicked but UI state unclear. Inspect screenshots.');
