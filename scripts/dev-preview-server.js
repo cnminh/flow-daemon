@@ -25,9 +25,13 @@ fs.mkdirSync(ROOT, { recursive: true });
 const app = express();
 
 // Directory listing at / — inlines images + videos so you can scroll through
-// without clicking each link. Ordered newest first.
+// without clicking each link. Ordered by mtime descending (genuinely
+// newest first; alphabetical sort can bury fresh files under older names).
 app.get('/', (req, res) => {
-  const files = fs.readdirSync(ROOT).sort().reverse();
+  const files = fs.readdirSync(ROOT)
+    .map((name) => ({ name, mtime: fs.statSync(path.join(ROOT, name)).mtimeMs }))
+    .sort((a, b) => b.mtime - a.mtime)
+    .map((f) => f.name);
   const IMG_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp']);
   const VID_EXTS = new Set(['.mp4', '.webm', '.mov']);
   res.type('html').send(`<!doctype html>

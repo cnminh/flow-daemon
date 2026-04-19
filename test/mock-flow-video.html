@@ -32,8 +32,20 @@
 
   <!-- Matches selectors.video.downloadSceneButton. Real Flow's Download
        button textContent is "downloadDownload" (Material icon + label);
-       this mock mirrors that combined text. -->
-  <button id="download-btn" style="display:none" onclick="mockDownloadScene()">downloadDownload</button>
+       this mock mirrors that combined text. Clicking it opens the
+       resolution-picker "modal" (just a div below with quality buttons). -->
+  <button id="download-btn" style="display:none" onclick="openDownloadModal()">downloadDownload</button>
+  <div id="download-modal" style="display:none">
+    <!-- These 4 options mirror real Flow's modal exactly. Only 720p and
+         1080p are valid for our CLI; clicking them triggers a download
+         event. 270p (GIF) and 4K (50 extra credits) are present for
+         fidelity but wired to no-ops — the stepper / tests must NEVER
+         click them. -->
+    <button onclick="noop('270p')">270pAnimated GIF</button>
+    <button onclick="mockDownloadQuality('720p')">720pOriginal Size</button>
+    <button onclick="mockDownloadQuality('1080p')">1080pUpscaled</button>
+    <button onclick="noop('4K')">4KUpscaled · 50 credits</button>
+  </div>
 
   <div id="clips"></div>
 
@@ -95,16 +107,26 @@
       preview.appendChild(el);
     }
 
-    function mockDownloadScene() {
+    function openDownloadModal() {
+      document.getElementById('download-modal').style.display = 'block';
+    }
+
+    function noop(kind) {
+      // A test that clicks 270p or 4K here is doing something wrong.
+      console.error('mock: refusing to trigger ' + kind + ' download');
+    }
+
+    function mockDownloadQuality(quality) {
       // Trigger a Playwright "download" event by programmatically clicking
       // an <a download>. The blob bytes are a tiny stub — tests only check
-      // size > 0 and the download path matches output_path.
+      // size > 0. Quality is embedded in the filename so tests can
+      // distinguish a 720p vs 1080p click if they care.
       const blob = new Blob([new Uint8Array([0x00, 0x00, 0x00, 0x20, 0x66, 0x74, 0x79, 0x70])],
         { type: 'video/mp4' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'scene.mp4';
+      a.download = 'scene-' + quality + '.mp4';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
