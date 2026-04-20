@@ -54,6 +54,7 @@ Subcommands:
 | `flow-cli health` | Full daemon health JSON |
 | `flow-cli status` | Short human-readable snapshot: `idle` or `busy: generating (Ns elapsed)` |
 | `flow-cli generate [PROMPT] [flags]` | Generate an image. **Auto-starts the daemon if it's not running** |
+| `flow-video-cli generate [PROMPT...] [flags]` | Generate a video (variadic prompts = chained extends). Uses the same daemon. |
 | `flow-cli help` / `--help` / `-h` | Print help |
 
 `flow-cli generate` has **three output modes**, in precedence order:
@@ -91,6 +92,45 @@ flow-cli status
 
 On success the CLI prints the image path to stdout (or full JSON with `--json`).
 Exit codes: `0` ok, `1` bad args, `2` daemon unreachable, `3` generation failed.
+
+### `flow-video-cli` — video mode
+
+A sibling CLI that drives Flow in **video mode** alongside `flow-cli`'s
+image mode. Same daemon, same Chrome, same queue — video jobs take turns
+with image jobs.
+
+~~~bash
+# One prompt → one ~8-second clip
+flow-video-cli generate "a weathered lighthouse at dusk, 16:9"
+
+# Variadic prompts → Flow's Extend feature chains them in one scene,
+# output is one stitched mp4 (~8s per prompt)
+flow-video-cli generate "scene opens" "something happens" "scene closes"
+
+# Seed the first clip from a still image (frames-to-video)
+flow-video-cli generate "waves grow bigger" --frame hero.png
+
+# Pipe from flow-cli for the hero-image → video pipeline
+flow-cli generate "a lighthouse at dusk" --output hero.png
+flow-video-cli generate "waves grow bigger" --frame hero.png --output out.mp4
+~~~
+
+Default output path: `/tmp/flow_video/flow-<unix-ts>.mp4`. Override with
+`--output PATH` (absolute or relative). No Content Hub pathing — use
+`--output` when integrating with Content Hub.
+
+Video-specific flags: `--frame PATH` (starting image), `--model` (veo-3 /
+veo-3-fast / veo-2; default random), `--aspect 16:9|9:16` (default 16:9),
+`--dry-run` (print payload and exit without burning quota).
+
+Video-specific error codes (in addition to the image-side ones):
+
+| code | what to do |
+|---|---|
+| `extend_failed` | A specific extend step timed out. Response includes `failed_at_index` (0-indexed prompt that failed) and `completed_prompts`. The Flow scene is kept for manual inspection. |
+| `frame_invalid` | `--frame PATH` doesn't exist, isn't png/jpg, or Flow rejected the upload. |
+
+---
 
 ### Daemon lifecycle
 
@@ -173,6 +213,21 @@ right now (or `null` if idle), plus `worker_busy` to distinguish "idle" from
 When both are supplied, `output_path` wins. When neither is supplied, the
 endpoint returns `400`.
 
+For video jobs, `POST /enqueue` also accepts a video body shape:
+
+```jsonc
+{
+  "prompts": ["first prompt", "extend prompt 2"],  // 1..N
+  "output_path": "/abs/path.mp4",                  // required, absolute
+  "frame_path": "/abs/hero.png",                   // optional starting frame
+  "model": "veo-3-fast",                           // optional
+  "aspect": "16:9"                                 // optional, default "16:9"
+}
+```
+
+Body discrimination: presence of `prompts` array → video job; presence of
+single `prompt` string → image job (existing behavior unchanged).
+
 `image_path` in the `/status` response is the path the image was actually
 written to — same as what the CLI prints on stdout.
 
@@ -188,6 +243,8 @@ written to — same as what the CLI prints on stdout.
 | `browser_crashed` | Restart the daemon |
 | `profile_locked` | Another Chromium is using `~/.flow-daemon/profile/` and it's not ours. The error message shows the offending PID — close it manually and retry. (If it IS an orphan of ours, the daemon auto-kills it; this error only fires when the lock-holder is an unrelated process.) |
 | `network` | Image download failed — retry |
+| `extend_failed` | Video only. A mid-chain extend step timed out. Status response includes `failed_at_index` and `completed_prompts`; no auto-retry. |
+| `frame_invalid` | Video only. `--frame` path doesn't exist, isn't png/jpg, or Flow rejected the upload. |
 
 ---
 
@@ -195,16 +252,25 @@ written to — same as what the CLI prints on stdout.
 
 ```
 flow-daemon/
-├── bin/flow-cli.js       # CLI entry point
-├── server.js             # Express HTTP server + worker loop + graceful shutdown
+├── bin/
+│   ├── flow-cli.js                # CLI for image generation
+│   └── flow-video-cli.js          # CLI for video generation
+├── server.js                      # Express HTTP server + worker loop + dispatch by job type
 ├── lib/
-│   ├── flow.js           # Playwright automation (image mode toggle, src-diff, download)
-│   ├── queue.js          # In-memory FIFO job queue
-│   └── selectors.js      # Single source of CSS/Playwright selectors
+│   ├── browser.js                 # Shared Playwright/profile lifecycle, anti-detection
+│   ├── cli-shared.js              # Shared daemon lifecycle + flag parsing (used by both CLIs)
+│   ├── image.js                   # Image-mode Playwright worker
+│   ├── video.js                   # Video-mode Playwright worker (frames-to-video + extend)
+│   ├── queue.js                   # In-memory FIFO job queue (payload-agnostic)
+│   └── selectors.js               # Single source of CSS/Playwright selectors (common/image/video)
+├── scripts/
+│   └── dev-preview-server.js      # Dev-time static server for screenshots + mp4s (not shipped)
 └── test/
-    ├── daemon.test.js    # Unit tests against a local mock-flow.html fixture
-    ├── e2e-wizard.js     # System test (requires Content Hub running on :4000)
-    └── mock-flow.html    # Local Flow look-alike for hermetic Playwright tests
+    ├── daemon.test.js             # HTTP + dispatch tests (image + video)
+    ├── video.test.js              # Video-worker tests against mock-flow-video.html
+    ├── mock-flow.html             # Image-mode Playwright fixture
+    ├── mock-flow-video.html       # Video-mode Playwright fixture
+    └── e2e-wizard.js              # System test (requires Content Hub)
 ```
 
 ---
@@ -218,6 +284,7 @@ flow-daemon/
 | `FLOW_ROOT_DIR` | parent of `server.js` (resolves to repo root) | base dir for *relative* output paths. Absolute `output_path` values bypass it entirely. Default Content Hub pattern lives under this dir. |
 | `FLOW_URL_OVERRIDE` | unset | (test only) navigate to this URL instead of `labs.google/fx/tools/flow/...` |
 | `FLOW_DAEMON_IDLE_TIMEOUT_MIN` | `30` | Minutes of idleness (queue empty + no running job + no enqueues) before the daemon shuts itself down cleanly. Set to `0` to disable. The CLI auto-restarts it on the next `flow-cli generate`. |
+| `FLOW_VIDEO_OUTPUT_DIR` | `/tmp/flow_video/` | (`flow-video-cli` only) Default directory for `flow-video-cli generate` when `--output` is not given. |
 
 For Content Hub use, the daemon should be started with `FLOW_ROOT_DIR`
 pointing at the Phoenix app root (so images land where Plug.Static can

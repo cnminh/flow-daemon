@@ -144,7 +144,7 @@ test('runJob against mock fixture downloads first image to rootDir', async () =>
   // Test isolation: clear any leftover queue state from previous tests
   require('../lib/queue').reset();
 
-  const { runJob } = require('../lib/flow.js');
+  const { runJob } = require('../lib/image.js');
 
   const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'flow-daemon-test-'));
 
@@ -222,6 +222,75 @@ test('worker consumes queued jobs against mock fixture', async () => {
     assert.strictEqual(finalStatus.status, 'done');
     assert.match(finalStatus.image_path, /priv\/uploads\/video_projects\/9\/segments\/1\/flow\.png$/);
     assert.ok(fs.existsSync(path.join(rootDir, finalStatus.image_path)));
+  } finally {
+    delete process.env.FLOW_ROOT_DIR;
+    delete process.env.FLOW_URL_OVERRIDE;
+    await new Promise((r) => server.close(r));
+    fs.rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
+test('POST /enqueue with video body shape dispatches to video worker', async () => {
+  require('../lib/queue').reset();
+
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'flow-daemon-test-'));
+  const outputPath = path.join(rootDir, 'video-out.mp4');
+
+  // Pin the worker to the mock-flow-video fixture.
+  const MOCK_VIDEO_URL = 'file://' + path.resolve(__dirname, 'mock-flow-video.html');
+  process.env.FLOW_ROOT_DIR = rootDir;
+  process.env.FLOW_URL_OVERRIDE = MOCK_VIDEO_URL;
+
+  const { createServer } = require('../server.js');
+  const server = createServer();
+  await new Promise((r) => server.listen(0, r));
+  const port = server.address().port;
+
+  try {
+    const enqueueRes = await new Promise((resolve, reject) => {
+      const req = http.request(
+        {
+          host: '127.0.0.1',
+          port,
+          path: '/enqueue',
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        },
+        (res) => {
+          let data = '';
+          res.on('data', (c) => (data += c));
+          res.on('end', () => resolve({ status: res.statusCode, body: JSON.parse(data) }));
+        }
+      );
+      req.on('error', reject);
+      req.write(JSON.stringify({
+        prompts: [randomPrompt()],
+        output_path: outputPath,
+      }));
+      req.end();
+    });
+
+    assert.strictEqual(enqueueRes.status, 200);
+    const jobId = enqueueRes.body.job_id;
+
+    // Poll until done (max 15s)
+    let finalStatus = null;
+    for (let i = 0; i < 30; i += 1) {
+      const { body } = await get(port, `/status/${jobId}`);
+      if (body.status === 'done' || body.status === 'error') {
+        finalStatus = body;
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+
+    assert.ok(finalStatus, 'video job should finish within 15s');
+    assert.strictEqual(finalStatus.status, 'done');
+    assert.strictEqual(finalStatus.type, 'video');
+    assert.strictEqual(finalStatus.video_path, outputPath);
+    assert.strictEqual(finalStatus.prompt_count, 1);
+    assert.ok(fs.existsSync(outputPath));
+    assert.ok(fs.statSync(outputPath).size > 0);
   } finally {
     delete process.env.FLOW_ROOT_DIR;
     delete process.env.FLOW_URL_OVERRIDE;

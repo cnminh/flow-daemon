@@ -8,11 +8,14 @@ below from a user's perspective.
 
 ## What this project is
 
-`flow-daemon` is a Node.js HTTP daemon + CLI that drives
-[Google Flow](https://labs.google/fx/tools/flow/) via Playwright to generate
-AI images from text prompts. It's a personal tool — no deployment, no SaaS,
-no multi-user anything. One user, one logged-in Chromium profile, localhost
-HTTP only.
+`flow-daemon` is a Node.js HTTP daemon + two CLIs (`flow-cli` for images,
+`flow-video-cli` for videos) that drive [Google Flow](https://labs.google/fx/tools/flow/)
+via Playwright. The daemon is unified — one process, one Chromium, one FIFO
+queue; jobs are discriminated by body shape (image vs video). Invariant #1
+(single job at a time) still holds across both kinds.
+
+It's a personal tool — no deployment, no SaaS, no multi-user anything. One
+user, one logged-in Chromium profile, localhost HTTP only.
 
 It's the extracted sidecar for [content-hub](https://github.com/cnminh/content-hub)
 but the HTTP surface is generic enough to be called by anything.
@@ -59,7 +62,7 @@ but the HTTP surface is generic enough to be called by anything.
 
 `POST /enqueue` accepts a prompt plus **either** `output_path` **or** the
 Content Hub `(project_id, segment_id)` pair. The server resolves the target
-path in `server.js::drainQueue` and `lib/flow.js::runJob`:
+path in `server.js::drainQueue` and `lib/image.js::runJob`:
 
 | Input | Target path |
 |---|---|
@@ -106,7 +109,7 @@ The daemon uses env vars — see README "Config" section. Key ones:
 ## Architecture one-pager
 
 ```
-flow-cli (CLI)                       External caller (Elixir FlowClient, curl, etc.)
+flow-cli / flow-video-cli (CLIs)     External caller (Elixir FlowClient, curl, etc.)
     │                                        │
     └──── HTTP POST /enqueue ────────────────┘
                  │
@@ -121,17 +124,12 @@ flow-cli (CLI)                       External caller (Elixir FlowClient, curl, e
           server.js::drainQueue
                  │  workerBusy=true
                  │  queue.markRunning()
-                 ▼
-          lib/flow.js::runJob
-                 │  ensureContextForUrl (persistent or ephemeral)
-                 │  findOrCreatePage
-                 │  detect login / captcha
-                 │  ensureImageMode
-                 │  type prompt with jitter
-                 │  click Create
-                 │  waitForFunction on new output src
-                 │  download bytes (data: or HTTPS)
-                 │  write to disk
+                 │  dispatches by payload.type:
+                 ├── image → lib/image.js::runJob
+                 │           ensureImageMode, type prompt, download png
+                 └── video → lib/video.js::runJob
+                             ensureVideoMode, optional frame-upload,
+                             extend loop, download mp4
                  ▼
           queue.markDone / markError
                  │
@@ -141,26 +139,34 @@ flow-cli (CLI)                       External caller (Elixir FlowClient, curl, e
 
 Module responsibilities:
 
-- `bin/flow-cli.js` — argv parsing, mode resolution (standalone / output /
-  ids), HTTP calls to the daemon, polling, exit codes. Also owns the
-  daemon auto-start lifecycle (`ensureDaemonUp`, `spawnDaemon`,
-  `findProcessOnPort`). Spawns `node server.js` detached + unrefed on
-  cold calls. No Playwright here.
-- `server.js` — Express routes, worker loop, graceful shutdown, env var
-  reading. Also owns the idle-shutdown watchdog (`FLOW_DAEMON_IDLE_TIMEOUT_MIN`,
-  default 30). Calls `closeBrowser()` from `lib/flow.js` on SIGINT/SIGTERM
-  and on idle-timeout.
-- `lib/flow.js` — everything Playwright. `runJob` is the main export;
-  `closeBrowser` for shutdown; `ensureImageModeAndCount(page, 1)` opens
-  the Flow settings popover once, flips mode (Image) AND output count
-  (x1) in the same cycle, then Escapes to close.
-- `lib/queue.js` — FIFO singleton with module-level state. Exposes
-  `currentJob()` for `/health`, and `reset()` for tests only.
-- `lib/selectors.js` — CSS/Playwright selectors. **Single source.** Includes
-  `countTab(n)` as a function returning the selector for `x1/x2/x3/x4`.
-- `test/mock-flow.html` — static HTML fixture that mimics Flow's DOM
-  (textbox + Create button + output images). Must stay in lockstep with
-  `selectors.js`.
+- `bin/flow-cli.js` — image CLI (unchanged surface). Argv parsing, mode resolution
+  (standalone / output / Content Hub ids), HTTP calls to the daemon, polling,
+  exit codes. Uses `lib/cli-shared.js` for daemon-lifecycle + flag parsing.
+- `bin/flow-video-cli.js` — video CLI. Variadic prompts + `--frame` + `--model`
+  + `--aspect` + `--json` + `--dry-run`. Same shared helpers.
+- `server.js` — Express routes, worker loop (`drainQueue`), idle watchdog,
+  signal handlers. Dispatches each job to `lib/image.js::runJob` or
+  `lib/video.js::runJob` based on `payload.type`.
+- `lib/browser.js` — shared Playwright/profile lifecycle: `launchPersistentContext`,
+  `cleanStaleProfileLock` (orphan-kill machinery), `navigator.webdriver` erase,
+  humanized pause/jitter helpers, page-find-or-create.
+- `lib/image.js` — image-mode Playwright worker. `ensureImageModeAndCount`,
+  random model pick across Nano Banana Pro / Nano Banana 2 / Imagen 4,
+  image src-diff wait loop, download + write.
+- `lib/video.js` — video-mode Playwright worker. `ensureVideoMode`, optional
+  frame-upload, extend loop, stitched-scene download, `extend_failed` /
+  `frame_invalid` error tagging.
+- `lib/cli-shared.js` — shared CLI helpers: `ensureDaemonUp`, `findProcessOnPort`,
+  `spawnDaemon`, `parseFlags`, `readStdin`, `sleep`. Parameterized by
+  `{ port, url, serverPath, logDir, logFile }` so both CLIs can reuse.
+- `lib/queue.js` — FIFO singleton. Payload-agnostic: each job carries an
+  opaque `payload` object that the worker destructures as it needs.
+- `lib/selectors.js` — single source of CSS/Playwright selectors, split into
+  three namespaces: `common` (both modes), `image` (image-mode popover),
+  `video` (video-mode popover + extend + download).
+- `test/mock-flow.html` + `test/mock-flow-video.html` — static HTML fixtures
+  that mimic Flow's DOM for hermetic Playwright tests. Must stay in lockstep
+  with `selectors.js`.
 
 ---
 
@@ -170,14 +176,26 @@ Module responsibilities:
 - Formatted like existing code: 2-space indent, single quotes, trailing
   commas in multi-line objects/arrays.
 - Keep modules small. Each `lib/*.js` file has one clear responsibility.
-  When `lib/flow.js` grows beyond ~300 lines, extract (e.g. `lib/download.js`,
-  `lib/mode-toggle.js`).
+  The split is already done: `lib/image.js`, `lib/video.js`, `lib/browser.js`,
+  `lib/cli-shared.js`. Don't merge them back.
 - Error handling: throw `Error` objects with `err.error_code` set to one of
-  the documented codes (`not_logged_in`, `captcha`, `quota_exceeded`,
-  `timeout`, `selector_missing`, `browser_crashed`, `profile_locked`,
-  `network`). The worker loop in `server.js` maps these into the HTTP
-  response; `browser_crashed` and `profile_locked` additionally clear
-  the `browserConnected` health flag.
+  the documented codes. The worker loop in `server.js` maps these into the
+  HTTP response; `browser_crashed` and `profile_locked` additionally clear
+  the `browserConnected` health flag. Full taxonomy:
+  - `not_logged_in` — Flow page doesn't show a prompt box; session expired.
+  - `captcha` — CAPTCHA challenge detected in Chromium.
+  - `quota_exceeded` — Flow's daily generation limit hit.
+  - `timeout` — generation took >180s with no result.
+  - `selector_missing` — expected DOM element not found; Flow UI drifted.
+  - `browser_crashed` — Playwright page/context error; daemon restart needed.
+  - `profile_locked` — `SingletonLock` held by a non-daemon process.
+  - `network` — image/video download failed after generation.
+  - `extend_failed` — video only. A mid-chain extend step didn't complete.
+    Response includes `failed_at_index` (0-indexed) and `completed_prompts`
+    (clips that succeeded before failure). The Flow scene is kept intact;
+    no auto-retry. Caller decides.
+  - `frame_invalid` — video only. `--frame PATH` failed validation: missing
+    file, non-png/jpg, or Flow rejected the upload.
 - HTTP requests from the CLI: use built-in `fetch` (Node 18+). No axios, no
   node-fetch dep.
 - Tests: `node --test` runner, plain `assert`. No Jest, no Mocha.
@@ -188,6 +206,13 @@ Module responsibilities:
 
 - **Adding a selector:** put it in `lib/selectors.js`. Update the mock
   fixture in `test/mock-flow.html` to match. Run `npm test`.
+- **Adding a video selector:** put it in `lib/selectors.js` under the `video`
+  namespace. Update the `test/mock-flow-video.html` fixture to match. Run
+  `node --test test/video.test.js`.
+- **Video generation fails with `selector_missing`:** follow the same
+  Flow-UI-drift playbook as images — kill daemon, open Chromium manually
+  on the Flow project, inspect, update `lib/selectors.js`. Video selectors
+  are under `selectors.video.*`.
 - **Changing timing / anti-detection:** discuss first. These values are
   load-bearing against Google's detection heuristics.
 - **Adding an HTTP endpoint:** update `server.js` (route) + README (HTTP API
@@ -196,9 +221,9 @@ Module responsibilities:
 - **Adding a CLI subcommand:** update `bin/flow-cli.js` (switch in `main()`)
   + help text + README.md CLI section.
 - **Changing the output path logic:** touch both `server.js` (validation)
-  AND `lib/flow.js::runJob` (actual write) AND `bin/flow-cli.js` (client-
-  side mode resolution). Keep all three consistent. Run the mock-fixture
-  test to verify.
+  AND `lib/image.js::runJob` (actual write for images) AND `bin/flow-cli.js`
+  (client-side mode resolution). Keep all three consistent. Run the
+  mock-fixture test to verify.
 - **Bug fixes for Google UI drift:** selectors only, 99% of the time.
 - **Testing against real Flow:** use meaningful, varied prompts —
   NEVER loop "test", "hello", "a brain", etc. Identical prompts in

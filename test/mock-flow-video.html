@@ -1,0 +1,137 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Mock Flow — Video</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    [role="textbox"] { width: 400px; min-height: 40px; border: 1px solid #ccc;
+      padding: 8px; outline: none; }
+    #clips video { width: 200px; height: 120px; margin: 4px; display: block; }
+    .extend-btn { margin: 4px 0; }
+  </style>
+</head>
+<body>
+  <h1>Mock Flow — Video</h1>
+
+  <!-- Matches selectors.common.promptInput = [role="textbox"] -->
+  <div role="textbox" contenteditable="true" data-placeholder="Describe your video"></div>
+  <br/>
+
+  <!-- Matches selectors.common.generateButton = text=arrow_forwardCreate
+       Real Flow renders the "arrow_forward" glyph prefix; this mock mirrors
+       that combined text content. -->
+  <button onclick="mockCreate()">arrow_forwardCreate</button>
+
+  <!-- Matches selectors.video.framesTab. Real Flow's Frames tab is a
+       popover slider with text "crop_freeFrames"; this mock mirrors it as
+       a flow_tab_slider_trigger button with "Frames" text. -->
+  <button class="flow_tab_slider_trigger" onclick="openFrames()">Frames</button>
+  <input type="file" id="frame-input" accept="image/*" style="display:none" onchange="onFrameUpload(event)" />
+  <div id="frame-preview-container"></div>
+
+  <!-- Matches selectors.video.downloadSceneButton. Real Flow's Download
+       button textContent is "downloadDownload" (Material icon + label);
+       this mock mirrors that combined text. Clicking it opens the
+       resolution-picker "modal" (just a div below with quality buttons). -->
+  <button id="download-btn" style="display:none" onclick="openDownloadModal()">downloadDownload</button>
+  <div id="download-modal" style="display:none">
+    <!-- These 4 options mirror real Flow's modal exactly. Only 720p and
+         1080p are valid for our CLI; clicking them triggers a download
+         event. 270p (GIF) and 4K (50 extra credits) are present for
+         fidelity but wired to no-ops — the stepper / tests must NEVER
+         click them. -->
+    <button onclick="noop('270p')">270pAnimated GIF</button>
+    <button onclick="mockDownloadQuality('720p')">720pOriginal Size</button>
+    <button onclick="mockDownloadQuality('1080p')">1080pUpscaled</button>
+    <button onclick="noop('4K')">4KUpscaled · 50 credits</button>
+  </div>
+
+  <div id="clips"></div>
+
+  <script>
+    // Query params:
+    //   ?failat=N  — the Nth Create click produces no <video>, simulating a
+    //                clip that didn't render. Used to test extend_failed.
+    //   ?rejectframe=1 — frame upload is rejected (no preview appears).
+    const params = new URLSearchParams(location.search);
+    const failat = parseInt(params.get('failat') || '-1', 10);
+    const rejectFrame = params.get('rejectframe') === '1';
+
+    let clipCount = 0;
+
+    function mockCreate() {
+      clipCount += 1;
+      // Simulate a clip that never finishes rendering: skip adding the <video>.
+      if (clipCount === failat) return;
+
+      // Simulate real Flow's brief render delay (kept short for test speed).
+      setTimeout(() => {
+        const clips = document.getElementById('clips');
+        const wrap = document.createElement('div');
+
+        const video = document.createElement('video');
+        // Unique "src" so the src-diff detection in lib/video.js picks it up.
+        // Not a real video — tests only check element presence + src change.
+        video.src = 'data:video/mp4;base64,AAAAHGZ0eXBtcDQyAAAAAW1wNDJtcDQxaXNvbQ==#clip-' + clipCount;
+        video.setAttribute('data-clip-index', String(clipCount));
+
+        const extend = document.createElement('button');
+        extend.className = 'extend-btn';
+        extend.textContent = 'Extend';
+        // Clicking Extend opens the extend panel in real Flow; generation
+        // is triggered separately by the main Create button. This mock is
+        // a no-op to mirror that UX (only mockCreate/Create generates clips).
+
+        wrap.appendChild(video);
+        wrap.appendChild(extend);
+        clips.appendChild(wrap);
+
+        document.getElementById('download-btn').style.display = 'inline-block';
+      }, 100);
+    }
+
+    function openFrames() {
+      document.getElementById('frame-input').click();
+    }
+
+    function onFrameUpload(ev) {
+      const file = ev.target.files[0];
+      if (!file) return;
+      if (rejectFrame) return; // simulate Flow rejecting the upload
+      const preview = document.getElementById('frame-preview-container');
+      preview.innerHTML = '';
+      const el = document.createElement('div');
+      el.setAttribute('data-frame-preview', '1');
+      el.textContent = 'Frame uploaded: ' + file.name;
+      preview.appendChild(el);
+    }
+
+    function openDownloadModal() {
+      document.getElementById('download-modal').style.display = 'block';
+    }
+
+    function noop(kind) {
+      // A test that clicks 270p or 4K here is doing something wrong.
+      console.error('mock: refusing to trigger ' + kind + ' download');
+    }
+
+    function mockDownloadQuality(quality) {
+      // Trigger a Playwright "download" event by programmatically clicking
+      // an <a download>. The blob bytes are a tiny stub — tests only check
+      // size > 0. Quality is embedded in the filename so tests can
+      // distinguish a 720p vs 1080p click if they care.
+      const blob = new Blob([new Uint8Array([0x00, 0x00, 0x00, 0x20, 0x66, 0x74, 0x79, 0x70])],
+        { type: 'video/mp4' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'scene-' + quality + '.mp4';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+  </script>
+</body>
+</html>
