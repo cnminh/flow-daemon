@@ -126,10 +126,10 @@ flow-cli / flow-video-cli (CLIs)     External caller (Elixir FlowClient, curl, e
                  │  queue.markRunning()
                  │  dispatches by payload.type:
                  ├── image → lib/image.js::runJob
-                 │           ensureImageMode, type prompt, download png
+                 │           ensureImageModeAndCount, type prompt, download png
                  └── video → lib/video.js::runJob
-                             ensureVideoMode, optional frame-upload,
-                             extend loop, download mp4
+                             ensureVideoModeForNewScene, optional frame-upload,
+                             extend loop, per-clip trpc fetch, ffmpeg stitch
                  ▼
           queue.markDone / markError
                  │

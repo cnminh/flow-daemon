@@ -1,8 +1,8 @@
 {
   "name": "flow-daemon",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "Playwright-driven daemon + CLI for generating images via labs.google/flow",
+  "description": "Playwright-driven daemon + CLIs for generating images and videos via labs.google/flow",
   "main": "server.js",
   "bin": {
     "flow-cli": "./bin/flow-cli.js",
@@ -11,7 +11,7 @@
   "scripts": {
     "start": "node server.js",
     "daemon": "node server.js",
-    "test": "node --test test/daemon.test.js",
+    "test": "node --test test/daemon.test.js test/video.test.js",
     "test:e2e": "node test/e2e-wizard.js"
   },
   "dependencies": {

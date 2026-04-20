@@ -214,7 +214,7 @@ right now (or `null` if idle), plus `worker_busy` to distinguish "idle" from
     "project_id": null,
     "segment_id": null
   },
-  "version": "0.1.0"
+  "version": "0.2.0"
 }
 ```
 
@@ -284,11 +284,12 @@ flow-daemon/
 │   ├── browser.js                 # Shared Playwright/profile lifecycle, anti-detection
 │   ├── cli-shared.js              # Shared daemon lifecycle + flag parsing (used by both CLIs)
 │   ├── image.js                   # Image-mode Playwright worker
-│   ├── video.js                   # Video-mode Playwright worker (frames-to-video + extend)
+│   ├── video.js                   # Video-mode Playwright worker (frames-to-video + extend + ffmpeg stitch to 1080p)
 │   ├── queue.js                   # In-memory FIFO job queue (payload-agnostic)
 │   └── selectors.js               # Single source of CSS/Playwright selectors (common/image/video)
 ├── scripts/
-│   └── dev-preview-server.js      # Dev-time static server for screenshots + mp4s (not shipped)
+│   ├── dev-preview-server.js      # Dev-time static server serving tmp/dev-preview/ over Tailscale (not shipped)
+│   └── dev-stepper.js             # Interactive Playwright REPL for live-inspecting Flow selectors (not shipped)
 └── test/
     ├── daemon.test.js             # HTTP + dispatch tests (image + video)
     ├── video.test.js              # Video-worker tests against mock-flow-video.html
@@ -349,8 +350,8 @@ with `selector_missing`:
 4. Edit `lib/selectors.js` — the only file with selectors. Save.
 5. Restart the daemon. Retry a job.
 
-Don't scatter selectors across `flow.js`. Keeping them all in
-`selectors.js` means UI drift is a one-file fix.
+Don't scatter selectors across the worker files (`image.js`, `video.js`).
+Keeping them all in `selectors.js` means UI drift is a one-file fix.
 
 ---
 
