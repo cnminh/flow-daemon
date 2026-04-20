@@ -19,8 +19,11 @@ git clone https://github.com/cnminh/flow-daemon.git
 cd flow-daemon
 npm install
 npx playwright install chromium
-npm install -g .          # makes `flow-cli` available globally
+npm install -g .          # makes `flow-cli` and `flow-video-cli` globally
 ```
+
+`flow-video-cli` also needs `ffmpeg` on PATH (used to trim + concat +
+scale each multi-clip scene to 1080p). On macOS: `brew install ffmpeg`.
 
 ---
 
@@ -100,12 +103,16 @@ image mode. Same daemon, same Chrome, same queue — video jobs take turns
 with image jobs.
 
 ~~~bash
-# One prompt → one ~8-second clip
-flow-video-cli generate "a weathered lighthouse at dusk, 16:9"
+# One prompt → one ~8-second clip, portrait by default
+flow-video-cli generate "a weathered lighthouse at dusk"
 
-# Variadic prompts → Flow's Extend feature chains them in one scene,
-# output is one stitched mp4 (~8s per prompt)
+# Variadic prompts → Flow's Extend feature chains them in one scene.
+# Output is one stitched mp4; each extend clip has ~1s of overlap at
+# its head trimmed before concat.
 flow-video-cli generate "scene opens" "something happens" "scene closes"
+
+# Landscape instead of default portrait
+flow-video-cli generate "a pine forest at dawn" --orientation landscape
 
 # Seed the first clip from a still image (frames-to-video)
 flow-video-cli generate "waves grow bigger" --frame hero.png
@@ -119,9 +126,23 @@ Default output path: `/tmp/flow_video/flow-<unix-ts>.mp4`. Override with
 `--output PATH` (absolute or relative). No Content Hub pathing — use
 `--output` when integrating with Content Hub.
 
-Video-specific flags: `--frame PATH` (starting image), `--model` (veo-3 /
-veo-3-fast / veo-2; default random), `--aspect 16:9|9:16` (default 16:9),
-`--dry-run` (print payload and exit without burning quota).
+Output is scaled to **1080p** (1920×1080 landscape, 1080×1920 portrait)
+using lanczos resize — not a learned upscale, so quality is bounded by the
+720p Flow source. Requires `ffmpeg` on PATH.
+
+Video-specific flags:
+
+- `--frame PATH` — starting image (frames-to-video)
+- `--model NAME` — Veo 3.1 model (`Veo 3.1 - Quality`, `Veo 3.1 - Fast`,
+  `Veo 3.1 - Lite`). Default: Quality for the first clip, random
+  Quality/Fast for each extend (Lite is skipped — too blocky for long chains)
+- `--orientation portrait|landscape` — default `portrait`. Maps to `--aspect`.
+  Only applies to the first clip; extends inherit the scene's aspect.
+- `--aspect 9:16|16:9` — lower-level alias; default `9:16`
+- `--overlap SECONDS` — trim amount at each extend seam. Default `1.0` —
+  matches Veo's extend feature, which replays ~1s of the prior clip at the
+  start of each extension for temporal continuity.
+- `--dry-run` — print the payload that would be sent and exit 0, no quota burn
 
 Video-specific error codes (in addition to the image-side ones):
 
@@ -220,8 +241,11 @@ For video jobs, `POST /enqueue` also accepts a video body shape:
   "prompts": ["first prompt", "extend prompt 2"],  // 1..N
   "output_path": "/abs/path.mp4",                  // required, absolute
   "frame_path": "/abs/hero.png",                   // optional starting frame
-  "model": "veo-3-fast",                           // optional
-  "aspect": "16:9"                                 // optional, default "16:9"
+  "model": "Veo 3.1 - Fast",                       // optional; pins the whole
+                                                   // chain to this model
+  "aspect": "9:16",                                // optional, "9:16" (default) or "16:9"
+  "overlap_seconds": 1.0                           // optional, default 1.0 — ffmpeg
+                                                   // trim amount at each extend seam
 }
 ```
 

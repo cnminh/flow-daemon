@@ -142,8 +142,10 @@ Module responsibilities:
 - `bin/flow-cli.js` — image CLI (unchanged surface). Argv parsing, mode resolution
   (standalone / output / Content Hub ids), HTTP calls to the daemon, polling,
   exit codes. Uses `lib/cli-shared.js` for daemon-lifecycle + flag parsing.
-- `bin/flow-video-cli.js` — video CLI. Variadic prompts + `--frame` + `--model`
-  + `--aspect` + `--json` + `--dry-run`. Same shared helpers.
+- `bin/flow-video-cli.js` — video CLI. Variadic prompts + `--frame` +
+  `--model` + `--orientation` (portrait / landscape, default portrait) +
+  `--aspect` (9:16 / 16:9 lower-level alias) + `--overlap SECONDS` (trim at
+  extend seams, default 1.0s) + `--json` + `--dry-run`. Same shared helpers.
 - `server.js` — Express routes, worker loop (`drainQueue`), idle watchdog,
   signal handlers. Dispatches each job to `lib/image.js::runJob` or
   `lib/video.js::runJob` based on `payload.type`.
@@ -153,9 +155,12 @@ Module responsibilities:
 - `lib/image.js` — image-mode Playwright worker. `ensureImageModeAndCount`,
   random model pick across Nano Banana Pro / Nano Banana 2 / Imagen 4,
   image src-diff wait loop, download + write.
-- `lib/video.js` — video-mode Playwright worker. `ensureVideoMode`, optional
-  frame-upload, extend loop, stitched-scene download, `extend_failed` /
-  `frame_invalid` error tagging.
+- `lib/video.js` — video-mode Playwright worker. `ensureVideoModeForNewScene`
+  (new-scene popover: Video tab + aspect + model), `setExtendModel` (inline
+  dropdown on clip detail view), optional frame-upload, extend loop,
+  per-clip `context.request.get` fetch from Flow's `media.getMediaUrlRedirect`
+  endpoint, ffmpeg trim+concat+scale to 1080p (requires `ffmpeg` on PATH),
+  `extend_failed` / `frame_invalid` error tagging.
 - `lib/cli-shared.js` — shared CLI helpers: `ensureDaemonUp`, `findProcessOnPort`,
   `spawnDaemon`, `parseFlags`, `readStdin`, `sleep`. Parameterized by
   `{ port, url, serverPath, logDir, logFile }` so both CLIs can reuse.
@@ -251,6 +256,12 @@ Module responsibilities:
 - Don't embed prompts, model selection, or aspect-ratio heuristics into the
   daemon. The caller owns the prompt. The daemon types what it's given and
   saves what comes back.
+- Don't try to replace the video clip-fetch with Flow's Download modal.
+  The modal downloads only a single 8-second clip regardless of scene
+  length (even if you're viewing an N-clip extend). We bypass the modal,
+  fetch each clip from `media.getMediaUrlRedirect?name=<uuid>` using the
+  persistent profile's cookies, and stitch with ffmpeg. That's the only
+  way to get the full N-clip scene.
 
 ---
 
