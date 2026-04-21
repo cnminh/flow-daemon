@@ -69,7 +69,7 @@ Character **softens**, gives consumption instructions, warm invitation.
 - Dialogue: `"thôi được rồi bỏ qua chuyện cũ, từ mai nhớ ăn tao nha"`
 - Practical instruction: when/how/with what (`ăn vào buổi sáng sau bữa ăn`, `pha với mật ong`)
 - Origin reinforcement: `đu đủ/gạo/trà Việt Nam ngon bổ rẻ nhớ chưa`
-- Closing visual: `hai tay dang rộng chào đón`, `phía sau người người ăn ngon miệng`, `ấm áp`
+- Closing visual: `hai tay dang rộng chào đón`, inanimate ambience (e.g. `vài quả X khác trên bàn đá bên cạnh`, `ánh sáng tự nhiên ấm áp qua cửa sổ`), `ấm áp` — NO humans, NO crowd shots
 
 ## Prompt writing rules
 
@@ -78,15 +78,17 @@ Character **softens**, gives consumption instructions, warm invitation.
 - **Explicit expression + gesture.** Don't rely on "angry" — spell it out: `mặt mày bực bội, miệng mở to quát tháo, tay chỉ thẳng vào camera`.
 - **One emotional beat per prompt.** Don't cram "angry then happy" into Act 1 — that's what the 3-act structure is for.
 - **Consistent character + background across all 3 prompts.** Same fruit, same face shape, same vườn/setting. Otherwise extends produce jarring jump cuts.
-- **Color/lighting words work well with Veo:** `rực rỡ`, `óng ánh`, `sáng láng`, `ấm áp`.
+- **Color/lighting words work well with Veo:** `sáng láng`, `ấm áp`, `dịu`, `tự nhiên`. Use `rực rỡ` / `óng ánh` **sparingly** — user feedback on the chuối v1 was "tông màu sáng chói quá". Default to natural/soft lighting (`ánh sáng tự nhiên dịu nhẹ qua cửa sổ`, `tông màu trung tính không chói`) unless the brief genuinely calls for saturated.
+- **No humans in background.** The character is the entire cast. Do NOT add `phía sau người người ăn X ngon miệng` or similar crowd shots — user explicitly removed this after the chuối v1 (and it was also in the original đu đủ template). Replace with inanimate ambience: same-ingredient fruits on a table, kitchen props, garden plants.
 - **Don't over-specify style.** Avoid `phong cách hoạt hình 3D` (user explicitly removed it). Let Veo choose its own visual register based on the realistic subject description.
 - **Keep each prompt ~80-150 Vietnamese words.** Longer prompts cause Veo to drop details; shorter prompts produce bland output.
 
 ## Continuity checklist (verify before showing user)
 
 - [ ] Same fruit/ingredient across all 3 prompts — same shape, cross-section style, face features
-- [ ] Same background theme (vườn / bếp / ruộng) across all 3
-- [ ] Color palette repeats (e.g. green-red for papaya: `màu xanh đỏ rực rỡ`)
+- [ ] Same background theme (vườn / bếp / ruộng / bếp-cạnh-vòi-nước) across all 3
+- [ ] Tone isn't over-bright. No `rực rỡ` + `óng ánh` + `shine` piled up in one prompt; default is `ánh sáng tự nhiên dịu` / `tông trung tính`
+- [ ] **No humans in any prompt** — character is the only cast member; backgrounds use inanimate props only
 - [ ] Act 1 facts ≠ Act 2 facts (don't repeat the same benefit — Act 1 is "what you're missing", Act 2 is "this is what I deliver")
 - [ ] Act 3 has a practical instruction + warm ending (not just another brag)
 
@@ -113,8 +115,13 @@ ngạo nghễ, màu sắc rực rỡ"
 Prompt 3 (Tha thứ):
 "Đu đủ vỏ xanh thịt đỏ nở nụ cười tha thứ, miệng nói 'thôi được rồi
 bỏ qua chuyện cũ, từ mai nhớ ăn tao nha, ăn vào buổi sáng sau bữa ăn,
-đu đủ Việt Nam ngon bổ rẻ nhớ chưa', hai tay dang rộng chào đón, phía
-sau người người ăn đu đủ ngon miệng, ấm áp"
+đu đủ Việt Nam ngon bổ rẻ nhớ chưa', hai tay dang rộng chào đón, vài
+quả đu đủ khác trên bàn gỗ bên cạnh, ánh sáng tự nhiên ấm áp qua cửa
+sổ, ấm áp"
+
+(Note: the original v1 đu đủ prompt 3 ended with `phía sau người người
+ăn đu đủ ngon miệng`. Current practice removed that — no humans in any
+frame. Same rule applied to the chuối v1 → v2 iteration.)
 ```
 
 ## Workflow
