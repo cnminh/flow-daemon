@@ -155,6 +155,57 @@ test('video.runJob rejects missing frame with frame_invalid', async () => {
   }
 });
 
+test('pickModelForIndex: default (no random) keeps every clip on Quality', () => {
+  const { pickModelForIndex } = require('../lib/video');
+  assert.strictEqual(pickModelForIndex(0, null, false), 'Veo 3.1 - Quality');
+  for (let i = 1; i < 10; i += 1) {
+    assert.strictEqual(pickModelForIndex(i, null, false), 'Veo 3.1 - Quality',
+      `clip ${i} should be Quality by default`);
+  }
+});
+
+test('pickModelForIndex: randomExtends picks only Quality or Fast for i>=1', () => {
+  const { pickModelForIndex } = require('../lib/video');
+  const allowed = new Set(['Veo 3.1 - Quality', 'Veo 3.1 - Fast']);
+  assert.strictEqual(pickModelForIndex(0, null, true), 'Veo 3.1 - Quality');
+  // Sample enough draws that we'd catch a 'Lite' leak or a non-pool value.
+  for (let n = 0; n < 50; n += 1) {
+    assert.ok(allowed.has(pickModelForIndex(1, null, true)));
+    assert.ok(allowed.has(pickModelForIndex(5, null, true)));
+  }
+});
+
+test('pickModelForIndex: override pins every clip', () => {
+  const { pickModelForIndex } = require('../lib/video');
+  assert.strictEqual(pickModelForIndex(0, 'Veo 3.1 - Lite', false), 'Veo 3.1 - Lite');
+  assert.strictEqual(pickModelForIndex(3, 'Veo 3.1 - Lite', true), 'Veo 3.1 - Lite');
+});
+
+test('buildFfmpegArgs: resolution maps to correct target dims', () => {
+  const { buildFfmpegArgs } = require('../lib/video');
+  const cases = [
+    { resolution: '720p',  aspect: '16:9', expectW: 1280, expectH: 720 },
+    { resolution: '720p',  aspect: '9:16', expectW: 720,  expectH: 1280 },
+    { resolution: '1080p', aspect: '16:9', expectW: 1920, expectH: 1080 },
+    { resolution: '1080p', aspect: '9:16', expectW: 1080, expectH: 1920 },
+    { resolution: '4k',    aspect: '16:9', expectW: 3840, expectH: 2160 },
+    { resolution: '4k',    aspect: '9:16', expectW: 2160, expectH: 3840 },
+  ];
+  for (const c of cases) {
+    const args = buildFfmpegArgs(['/tmp/a.mp4', '/tmp/b.mp4'], 1.0, c.aspect, '/tmp/out.mp4', c.resolution);
+    const filters = args[args.indexOf('-filter_complex') + 1];
+    assert.ok(filters.includes(`scale=${c.expectW}:${c.expectH}`),
+      `${c.resolution} ${c.aspect}: expected scale=${c.expectW}:${c.expectH} in filter`);
+  }
+});
+
+test('buildFfmpegArgs: unset resolution defaults to 4k', () => {
+  const { buildFfmpegArgs } = require('../lib/video');
+  const args = buildFfmpegArgs(['/tmp/a.mp4'], 1.0, '9:16', '/tmp/out.mp4', undefined);
+  const filters = args[args.indexOf('-filter_complex') + 1];
+  assert.ok(filters.includes('scale=2160:3840'), 'default should be 4k portrait (2160×3840)');
+});
+
 test('video.runJob rejects non-image frame path with frame_invalid', async () => {
   require('../lib/queue').reset();
 

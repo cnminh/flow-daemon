@@ -87,6 +87,11 @@ async function cmdGenerate(rawArgs) {
     process.exit(1);
   }
 
+  if (flags.resolution && !['720p', '1080p', '4k'].includes(flags.resolution)) {
+    console.error('error: --resolution must be "720p", "1080p", or "4k"');
+    process.exit(1);
+  }
+
   if (flags['dry-run']) {
     // Dry-run: preview the payload that WOULD be sent, without hitting the
     // daemon or spending any Flow quota. A DOM-level dry-run (screenshot
@@ -98,6 +103,8 @@ async function cmdGenerate(rawArgs) {
       output_path: outputPath,
       model: flags.model || null,
       aspect: flags.aspect || '9:16',
+      resolution: flags.resolution || '4k',
+      random_extends_model: Boolean(flags['random-extends-model']),
     }, null, 2));
     process.exit(0);
   }
@@ -112,6 +119,8 @@ async function cmdGenerate(rawArgs) {
   if (flags.frame) body.frame_path = path.resolve(flags.frame);
   if (flags.model) body.model = flags.model;
   if (flags.aspect) body.aspect = flags.aspect;
+  if (flags.resolution) body.resolution = flags.resolution;
+  if (flags['random-extends-model']) body.random_extends_model = true;
   if (flags.overlap !== undefined) {
     const val = parseFloat(flags.overlap);
     if (!Number.isFinite(val) || val < 0) {
@@ -197,7 +206,18 @@ Flags:
   --output PATH       save the stitched mp4 to PATH (absolute or relative).
                       Default: /tmp/flow_video/flow-<unix-ts>.mp4
   --frame PATH        path to .png or .jpg to seed the first clip (frames-to-video)
-  --model NAME        video model (veo-3, veo-3-fast, veo-2). Default: random
+  --model NAME        pin every clip to a specific Veo model. Valid names:
+                      "Veo 3.1 - Quality", "Veo 3.1 - Fast", "Veo 3.1 - Lite".
+                      Default behavior: every clip uses "Veo 3.1 - Quality"
+                      (see --random-extends-model to vary extends).
+  --random-extends-model
+                      randomize extends (clips 2..N) between Quality and Fast
+                      for motion variety. Clip 0 stays Quality. Ignored if
+                      --model pins the chain. Default: off.
+  --resolution 720p|1080p|4k
+                      output resolution (ffmpeg lanczos upscale from Flow's
+                      720p source — quality bounded by source even at 4k).
+                      Default: 4k.
   --orientation PORTRAIT|LANDSCAPE  video orientation. Default: portrait.
                                     Maps to --aspect 9:16 or 16:9.
   --aspect 9:16|16:9  aspect ratio (lower-level alias). Default: 9:16 (portrait).

@@ -47,6 +47,8 @@ async function drainQueue() {
         model: p.model,
         aspect: p.aspect,
         overlap_seconds: p.overlap_seconds,
+        random_extends_model: p.random_extends_model,
+        resolution: p.resolution,
       });
     } else {
       result = await imageRunner.runJob({
@@ -124,7 +126,7 @@ function createServer() {
 
     // Discriminate by body shape: `prompts` array → video; `prompt` string → image.
     if (Array.isArray(body.prompts)) {
-      const { prompts, frame_path, output_path, model, aspect, overlap_seconds } = body;
+      const { prompts, frame_path, output_path, model, aspect, overlap_seconds, random_extends_model, resolution } = body;
       if (!prompts.every((p) => typeof p === 'string' && p.length > 0)) {
         return res.status(400).json({ error: 'prompts must be non-empty strings' });
       }
@@ -137,6 +139,9 @@ function createServer() {
       if (overlap_seconds !== undefined && (typeof overlap_seconds !== 'number' || overlap_seconds < 0)) {
         return res.status(400).json({ error: 'overlap_seconds must be a non-negative number' });
       }
+      if (resolution && !['720p', '1080p', '4k'].includes(resolution)) {
+        return res.status(400).json({ error: 'resolution must be "720p", "1080p", or "4k"' });
+      }
       const jobId = queue.enqueue({
         type: 'video',
         prompts,
@@ -145,6 +150,8 @@ function createServer() {
         model: model || null,
         aspect: aspect || '9:16',
         overlap_seconds,
+        random_extends_model: Boolean(random_extends_model),
+        resolution: resolution || '4k',
       });
       touchActivity();
       setImmediate(drainQueue);
@@ -198,6 +205,7 @@ function createServer() {
         prompt_count: r.prompt_count || (p.prompts ? p.prompts.length : null),
         model: r.model || null,
         aspect: r.aspect || null,
+        resolution: r.resolution || null,
         failed_at_index: job.failed_at_index,
         completed_prompts: job.completed_prompts,
       });
