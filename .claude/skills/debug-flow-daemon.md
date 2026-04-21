@@ -103,6 +103,11 @@ Missing any of these mid-run is a clue about which step broke.
 - **Don't panic-update.** Kill daemon, start dev-stepper, navigate to project, inspect the failing element. Prefer `role`, `aria-label`, or stable text substrings. Avoid class names — Flow rotates them.
 - **Single-source rule:** edit ONLY `lib/selectors.js`. Update the matching mock fixture (`test/mock-flow.html` or `test/mock-flow-video.html`). Run `npm test`.
 
+### `--frame` job completes but clip 0 doesn't start from the frame
+- **Root cause:** Flow's Frames-to-Video doesn't accept a raw `setInputFiles` on the hidden `<input type=file>`. You must walk its real UI: Start slot label → scroll library to bottom → `"Upload image"` row → `"I agree"` Terms popup (first upload per account only) → Playwright intercepts native filechooser via `page.waitForEvent('filechooser')` → `setFiles` → ~12s processing wait. If a naive earlier refactor put the upload before the mode popover, you'll get `selector_missing: Frames entry point not found` instead.
+- **Verify:** `grep -iE "Start slot|Upload image|frame uploaded" ~/.flow-daemon/daemon.log` — all three lines should appear for a successful upload. If "frame uploaded" is present but the resulting video ignores the frame, Flow's state machine didn't bind (probe selector drifted).
+- **Probe:** `scripts/dev-probe-frame-upload.js` runs the full path with time-series screenshots — no quota burn.
+
 ### Video output has no sound on one clip
 - **Check:** each clip's streams via `ffprobe -show_streams`. Some Veo clips come back video-only.
 - **Workaround:** ffmpeg concat currently assumes each input has both v+a. If one lacks audio, add `-f lavfi -i anullsrc` and route around the missing stream. Not yet hit in production.
@@ -135,5 +140,6 @@ Missing any of these mid-run is a clue about which step broke.
 | `test/mock-flow-video.html` | Video-mode Playwright fixture |
 | `scripts/dev-preview-server.js` | Tailscale-exposed static server |
 | `scripts/dev-stepper.js` | Interactive Playwright REPL |
+| `scripts/dev-probe-frame-upload.js` | End-to-end `--frame` upload path probe (Start slot → library scroll → Upload image → I agree → filechooser). Zero-quota. Use when `--frame` jobs break or Flow changes the Frames-to-Video UI. |
 | `~/.flow-daemon/daemon.log` | Daemon stdout+stderr |
 | `~/.flow-daemon/profile/` | Persistent Chromium profile (do not touch) |

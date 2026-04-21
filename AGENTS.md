@@ -143,7 +143,9 @@ Module responsibilities:
   (standalone / output / Content Hub ids), HTTP calls to the daemon, polling,
   exit codes. Uses `lib/cli-shared.js` for daemon-lifecycle + flag parsing.
 - `bin/flow-video-cli.js` — video CLI. Variadic prompts + `--frame` +
-  `--model` + `--orientation` (portrait / landscape, default portrait) +
+  `--model` + `--random-extends-model` (opt-in random Quality/Fast for
+  extends; default all-Quality) + `--resolution 720p|1080p|4k` (default
+  4k) + `--orientation` (portrait / landscape, default portrait) +
   `--aspect` (9:16 / 16:9 lower-level alias) + `--overlap SECONDS` (trim at
   extend seams, default 1.0s) + `--json` + `--dry-run`. Same shared helpers.
 - `server.js` — Express routes, worker loop (`drainQueue`), idle watchdog,
@@ -157,10 +159,12 @@ Module responsibilities:
   image src-diff wait loop, download + write.
 - `lib/video.js` — video-mode Playwright worker. `ensureVideoModeForNewScene`
   (new-scene popover: Video tab + aspect + model), `setExtendModel` (inline
-  dropdown on clip detail view), optional frame-upload, extend loop,
+  dropdown on clip detail view), `uploadFirstFrame` (walks Flow's
+  Start-slot → library scroll → Upload image → I agree (first-time) →
+  filechooser intercept → setFiles + 12s processing wait), extend loop,
   per-clip `context.request.get` fetch from Flow's `media.getMediaUrlRedirect`
-  endpoint, ffmpeg trim+concat+scale to 1080p (requires `ffmpeg` on PATH),
-  `extend_failed` / `frame_invalid` error tagging.
+  endpoint, ffmpeg trim+concat+scale (resolution parameterized; default 4K,
+  requires `ffmpeg` on PATH), `extend_failed` / `frame_invalid` error tagging.
 - `lib/cli-shared.js` — shared CLI helpers: `ensureDaemonUp`, `findProcessOnPort`,
   `spawnDaemon`, `parseFlags`, `readStdin`, `sleep`. Parameterized by
   `{ port, url, serverPath, logDir, logFile }` so both CLIs can reuse.

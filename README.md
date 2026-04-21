@@ -126,16 +126,24 @@ Default output path: `/tmp/flow_video/flow-<unix-ts>.mp4`. Override with
 `--output PATH` (absolute or relative). No Content Hub pathing — use
 `--output` when integrating with Content Hub.
 
-Output is scaled to **1080p** (1920×1080 landscape, 1080×1920 portrait)
-using lanczos resize — not a learned upscale, so quality is bounded by the
-720p Flow source. Requires `ffmpeg` on PATH.
+Output is scaled via lanczos resize (not a learned upscale, so quality
+is bounded by the 720p Flow source). Default is **4K** (3840×2160
+landscape, 2160×3840 portrait); see `--resolution` for 1080p/720p.
+Requires `ffmpeg` on PATH.
 
 Video-specific flags:
 
-- `--frame PATH` — starting image (frames-to-video)
-- `--model NAME` — Veo 3.1 model (`Veo 3.1 - Quality`, `Veo 3.1 - Fast`,
-  `Veo 3.1 - Lite`). Default: Quality for the first clip, random
-  Quality/Fast for each extend (Lite is skipped — too blocky for long chains)
+- `--frame PATH` — starting image (frames-to-video). Uploads via Flow's
+  Start-slot → Upload image picker; first upload per account triggers a
+  Terms popup which the CLI auto-accepts.
+- `--model NAME` — pin every clip to a specific Veo model
+  (`Veo 3.1 - Quality`, `Veo 3.1 - Fast`, `Veo 3.1 - Lite`). Default
+  without this flag: every clip uses Quality (see `--random-extends-model`
+  to vary extends).
+- `--random-extends-model` — randomize extends (clips 2..N) between
+  Quality and Fast for motion variety; clip 0 stays Quality. Ignored
+  if `--model` pins the chain. Default: off.
+- `--resolution 720p|1080p|4k` — output resolution. Default `4k`.
 - `--orientation portrait|landscape` — default `portrait`. Maps to `--aspect`.
   Only applies to the first clip; extends inherit the scene's aspect.
 - `--aspect 9:16|16:9` — lower-level alias; default `9:16`
@@ -244,6 +252,9 @@ For video jobs, `POST /enqueue` also accepts a video body shape:
   "model": "Veo 3.1 - Fast",                       // optional; pins the whole
                                                    // chain to this model
   "aspect": "9:16",                                // optional, "9:16" (default) or "16:9"
+  "resolution": "4k",                              // optional, "720p" | "1080p" | "4k" (default)
+  "random_extends_model": false,                   // optional; when true, clips 2..N
+                                                   // randomize Quality/Fast for motion variety
   "overlap_seconds": 1.0                           // optional, default 1.0 — ffmpeg
                                                    // trim amount at each extend seam
 }
@@ -284,7 +295,7 @@ flow-daemon/
 │   ├── browser.js                 # Shared Playwright/profile lifecycle, anti-detection
 │   ├── cli-shared.js              # Shared daemon lifecycle + flag parsing (used by both CLIs)
 │   ├── image.js                   # Image-mode Playwright worker
-│   ├── video.js                   # Video-mode Playwright worker (frames-to-video + extend + ffmpeg stitch to 1080p)
+│   ├── video.js                   # Video-mode Playwright worker (frames-to-video + extend + ffmpeg stitch to 4K default)
 │   ├── queue.js                   # In-memory FIFO job queue (payload-agnostic)
 │   └── selectors.js               # Single source of CSS/Playwright selectors (common/image/video)
 ├── scripts/
