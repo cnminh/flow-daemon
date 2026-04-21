@@ -32,17 +32,65 @@ format — social feeds are vertical.
 
 ## Inputs to gather from the user
 
-Before drafting, confirm:
+Before drafting, confirm the 4 below. For (2) facts, (3) setting, (4)
+dialogue hooks: **present 2-3 options from the libraries below** rather
+than auto-picking — the user's preference is variety and choice.
 
 1. **Subject** — which ingredient/food/dish. If vague ("làm video về đồ
    ăn Việt"), ask for one concrete choice.
 2. **2-3 key facts** — nutritional, cultural, or health benefits. Concrete
    ("vitamin C gấp đôi cam", "enzyme papain tiêu hóa mạnh") beats vague
-   ("tốt cho sức khỏe").
-3. **Setting/background** — where does the character live visually?
-   (vườn đu đủ, bếp quê, ruộng lúa). One setting, reused across 3 scenes.
-4. **Style preference** — user previously said NO "phong cách hoạt hình
+   ("tốt cho sức khỏe"). Offer 4-5 candidate facts; user picks 2-3.
+3. **Setting/background** — pick from the Setting library below (or
+   propose something better if subject demands it). Show 2-3 options
+   with a one-liner on why each fits. One setting, reused across 3 scenes.
+4. **Dialogue hook style** — offer 2-3 hook variants per act from the
+   Dialogue library; user picks (or mixes).
+5. **Style preference** — user previously said NO "phong cách hoạt hình
    3D". Default to realistic/natural unless user specifies.
+
+## Setting library
+
+Each setting has a canonical Vietnamese phrase block you can drop into
+prompts. Pick the one that best fits the subject's natural habitat; don't
+default to the same kitchen for every video (user feedback: "đơn điệu").
+
+| Setting | Vietnamese phrase | Best for |
+|---|---|---|
+| Vườn/ruộng quê | `vườn X xanh mướt` / `ruộng X trĩu hạt` | field crops: rau, lúa, ớt, cà chua, bí, mía |
+| Bếp quê truyền thống | `bếp quê với bếp củi, nồi đất, mái lá` | staples with cultural weight: gạo, ngô, đậu xanh, bột, nghệ |
+| Quầy bếp gỗ hiện đại + thớt + dao | `quầy bếp gỗ với thớt gỗ và con dao bên cạnh` | ingredients involving prep: bơ, hành, tỏi, gừng, thịt |
+| Bếp cạnh vòi nước inox | `góc bếp cạnh vòi nước inox, bàn đá bên cạnh` | fruits/veg needing wash: chuối, dưa hấu, nho, rau lá |
+| Bàn ăn gia đình | `bàn ăn gỗ với bát đĩa sứ, khăn ăn vải` | finished dishes: phở, bún, canh, cơm |
+| Chợ quê Việt | `sạp hàng chợ quê với mẹt tre, lá chuối lót` | seafood + traditional produce: cá, tôm, rau thơm |
+| Ban công/cửa sổ có cây | `ban công nhỏ với chậu cây xanh, ánh sáng qua cửa sổ` | herbs + small fruits: rau mùi, húng, chanh, ớt chỉ thiên |
+| Vườn có ánh nắng nhẹ | `khu vườn với ánh nắng dịu qua tán lá` | tree fruits + flowers: xoài, nhãn, vải, hoa |
+
+## Dialogue hook library
+
+For each act, pick 1 hook style per run. Mixing across runs (different
+videos) keeps the channel from feeling like one repeated meme.
+
+### Act 1 (Gắt) — complaint openers
+
+- **Formal introduction:** `"tao là X đây, nghe cho rõ, tao chứa [facts], mà bọn mày toàn đi ăn [imported alt], quên tao"`
+- **Casual confrontation:** `"ê bọn mày, nhìn tao cho kỹ đi, tao là X đây, [facts], mà bọn mày quên tao rồi à"`
+- **Historical pride:** `"bao nhiêu năm tao đứng vững trong bếp người Việt, [facts], giờ bọn mày bỏ tao đi ăn [alt]"`
+- **Rhetorical dominance:** `"bọn mày biết tao là ai không, tao là X, [facts], mà bọn mày coi thường tao à"`
+
+### Act 2 (Khoe) — pride patterns
+
+- **Delivery promise (×2-3):** `"ăn tao mỗi ngày [benefit 1]"` … `"[benefit 2]"` … `"[benefit 3]"`
+- **Inventory brag:** `"nhà tao có [X], có [Y], còn có [Z], bọn mày tìm được ở đâu nữa"`
+- **Understated confidence:** `"tao không cần quảng cáo, bọn mày cứ ăn vào là biết, [benefit], [benefit]"`
+- **Direct comparison:** `"một miếng tao bằng cả [X] bọn nhập khẩu, [benefit], [benefit]"`
+
+### Act 3 (Tha thứ) — forgiveness closers
+
+- **Forgive + command:** `"thôi được rồi bỏ qua chuyện cũ, từ mai nhớ ăn tao nha, [instruction], [origin] ngon bổ rẻ nhớ chưa"`
+- **Warm reassurance:** `"tao không giận đâu, chỉ muốn bọn mày biết [instruction], [origin] là ngon nhất"`
+- **Playful peace:** `"ôi bọn mày đáng yêu quá, thôi làm hoà, [instruction], nhớ là [origin] đấy"`
+- **Conditional forgive:** `"ừ thì tao tha, nhưng phải [instruction], và nhớ [origin] ngon nhất"`
 
 ## The 3-act formula
 
@@ -126,8 +174,20 @@ frame. Same rule applied to the chuối v1 → v2 iteration.)
 
 ## Workflow
 
-1. **Gather** — confirm the 4 inputs above (subject, facts, setting, style).
-2. **Draft** — write all 3 prompts following the formula + rules.
+1. **Menu** — confirm subject, then present options (not auto-pick) in
+   ONE message so the user can review all dimensions at once:
+   - 4-5 candidate **facts** (user picks 2-3)
+   - 2-3 candidate **settings** from the library (user picks 1)
+   - 2-3 candidate **dialogue hooks** per act from the library (user
+     picks one per act, or mixes)
+   - Confirm default style (natural/realistic, no 3D cartoon)
+
+   If the user says "you recommend" / "tự chọn" / silences the menu,
+   auto-pick the most on-brand option per dimension and flag what you
+   picked — they can still veto at step 3.
+
+2. **Draft** — write all 3 prompts using user's picks + the formula +
+   the rules section.
 3. **Self-check** — run the continuity checklist.
 4. **Show to user** — present the 3 prompts as a reviewable block. Do
    NOT fire yet. Ask: "OK với script này chưa? Sửa gì không?"
@@ -138,6 +198,10 @@ frame. Same rule applied to the chuối v1 → v2 iteration.)
 
 **Do not skip step 4.** Firing spends ~8 credits per run. A one-minute
 review saves wasted generations.
+
+**Do not skip step 1's menu.** User feedback: auto-picking settings made
+the channel feel "đơn điệu" (monotonous). Different videos should use
+different settings/hooks even for the same subject archetype.
 
 ## Gotchas
 
