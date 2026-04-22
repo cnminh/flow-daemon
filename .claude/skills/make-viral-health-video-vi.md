@@ -103,7 +103,11 @@ Each wakeup: `curl -sS "http://127.0.0.1:47399/api/picker-status?job=<id>"`.
 If no progress after ~20 min, ping user in chat: "Còn đang pick không? Link
 vẫn live nhé." Then reschedule.
 
-### Stage 2 — Generate 4 character variants
+### Stage 2a — Generate 4 character prompts + critique (NEW review step)
+
+Before firing image gens, write 4 character prompts as text, run
+self-critique, and post to `char_prompts_review` so the user can edit /
+approve / regen cheaply before burning image-gen credits.
 
 State is `grid_done`. The state.json has:
 ```json
@@ -123,6 +127,38 @@ Generate 4 character prompts using the **character-variants formula** (below).
 Each prompt renders the Act 1 / opening-scene pose of the character so
 the user's picked image becomes a valid `--frame` seed for video.
 
+Run a **5-dimension self-critique** per variant:
+
+1. **Visual clarity** — Can Veo render this consistently? Distinct features?
+2. **Setting integration** — Background matches picked setting?
+3. **Treatment match** — Cinematic style applied correctly?
+4. **Drift risks** — For non-human protagonists, no human body parts?
+5. **Variety across 4** — Variants distinctly different, not just rephrased?
+
+Post to state `char_prompts_review`:
+
+```bash
+curl -sS -X POST -H "Content-Type: application/json" \
+  -d '{"job":"<job>","patch":{
+    "state":"char_prompts_review",
+    "character_prompts":["<v1>","<v2>","<v3>","<v4>"],
+    "character_prompts_critique":[{"notes":[…]},{"notes":[…]},{"notes":[…]},{"notes":[…]}]
+  }}' http://127.0.0.1:47399/api/picker-update
+```
+
+### Stage 2b — Poll for char-prompts approval / regen
+
+- `state: "char_prompts_review"` → user reviewing → reschedule 60-90s.
+- `state: "char_prompts_regen_requested"` → user hit regen (optionally
+  with `revise_comment` for direction) → regen 4 prompts (literal
+  translation of comment, not inspiration), post back to
+  `char_prompts_review`.
+- `state: "char_prompts_approved"` → user approved (possibly-edited)
+  prompts → proceed to stage 2c.
+
+### Stage 2c — Fire 4 image gens
+
+Read final `character_prompts` from state (user may have edited).
 Fire 4 background image jobs SEQUENTIALLY (daemon queue is single-worker
 anyway, parallel won't help):
 
@@ -447,6 +483,23 @@ these rules (inherited from `write-viral-food-script-vi`):
 - No humans / no crowd shots in any act
 - Natural/soft lighting default; avoid piling `rực rỡ` + `óng ánh` + `shine`
 - One emotional beat per prompt
+
+### Dialogue length + speech rate rules (CRITICAL — each Veo clip = 8s)
+
+Each clip is ~8s. Vietnamese speech rate ≈ 3 words/second. That means
+**quotes must fit in ~24 words per act** or Veo will truncate the dialogue.
+
+- **Hard budget:** ≤24 Vietnamese words in quotes per act. Not per
+  sentence — per ACT total (all quoted dialogue combined).
+- **Count the quoted words literally** during self-critique. If a draft
+  has 40+ words, cut ruthlessly — drop 1-2 facts rather than rush.
+- **Speed hint in every prompt:** append `giọng nói nhanh gọn dứt khoát`
+  near the end (before background) so Veo renders at a brisker pace.
+  Examples: `"... miệng nói '<quote>', giọng nói nhanh gọn dứt khoát rõ ràng, background ..."`
+- **Structure preference:** short declarative sentences > run-on clauses.
+  2 short quotes better than 1 long one.
+- Prior drafts that violated this rule (chuối v1, bơ v1) had 40-80 words
+  per act — Veo dropped the middle clauses silently.
 
 ### Per-arc templates
 

@@ -260,6 +260,22 @@
   .critique-item.warn { color: #fcd34d; background: #2a1e03; border-left: 3px solid #f59e0b; }
   .critique-item.fail { color: #fca5a5; background: #2a0808; border-left: 3px solid #ef4444; }
   .review-bar { display: grid; grid-template-columns: 1fr 2fr; gap: 8px; }
+  .review-comment-wrap { margin: 4px 0 10px; }
+  .review-comment-wrap textarea {
+    width: 100%;
+    min-height: 60px;
+    background: #0a0b0e;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px;
+    color: var(--text);
+    font-size: 13px;
+    font-family: inherit;
+    line-height: 1.4;
+    resize: vertical;
+    box-sizing: border-box;
+  }
+  .review-comment-wrap textarea:focus { outline: none; border-color: var(--accent); }
 
   .revise-section {
     background: var(--panel);
@@ -382,13 +398,38 @@
   </div>
 </section>
 
+<!-- ═══ STAGE 1.5: CHAR PROMPTS REVIEW (before firing image gens) ═══ -->
+<section id="stageCharPromptsReview" class="hidden">
+  <div id="summaryCharPrompts" class="summary"></div>
+  <h2>✏️ Prompts nhân vật — Review trước khi tạo ảnh
+    <span class="hint">tune text, tiết kiệm credit</span></h2>
+  <div id="charPromptsReviewList"></div>
+  <div class="review-comment-wrap">
+    <textarea id="charRegenComment" placeholder="(Tuỳ chọn) Góp ý cho lần gen sau — vd: 'màu sắc sáng hơn', 'thêm chi tiết mạch máu', 'bớt cinematic'..."></textarea>
+  </div>
+  <div class="submit-bar review-bar">
+    <button id="btnCharRegen" class="submit-btn-secondary">🔄 Tạo lại prompts</button>
+    <button id="btnApproveCharPrompts" class="submit-btn">▶ OK tạo 4 ảnh</button>
+  </div>
+</section>
+
+<!-- ═══ STAGE 1.75: CHAR PROMPTS REGEN WAIT ═══ -->
+<section id="stageCharPromptsRegen" class="hidden">
+  <div id="summaryCharRegen" class="summary"></div>
+  <div class="loader">
+    <div class="spinner"></div>
+    <div class="status">Đang viết lại prompts nhân vật…</div>
+    <div class="detail">~30 giây.</div>
+  </div>
+</section>
+
 <!-- ═══ STAGE 2: CHARACTER GEN WAIT ═══ -->
 <section id="stageCharGen" class="hidden">
   <div id="summaryChar" class="summary"></div>
   <div class="loader">
     <div class="spinner"></div>
     <div class="status">Đang tạo 4 nhân vật…</div>
-    <div class="detail">Mất khoảng 2 phút. Đừng đóng trang này.</div>
+    <div class="detail">Mất khoảng 2-3 phút. Đừng đóng trang này.</div>
   </div>
 </section>
 
@@ -408,6 +449,9 @@
   <h2>📜 Kịch bản — Review trước khi render
     <span class="hint" id="regenCountHint"></span></h2>
   <div id="promptsReviewList"></div>
+  <div class="review-comment-wrap">
+    <textarea id="regenComment" placeholder="(Tuỳ chọn) Góp ý cho lần gen sau — vd: 'Act 3 chưa rõ cơ chế', 'ngắn hơn', 'thêm so sánh'..."></textarea>
+  </div>
   <div class="submit-bar review-bar">
     <button id="btnRegen" class="submit-btn-secondary">🔄 Tạo lại kịch bản</button>
     <button id="btnApproveVideo" class="submit-btn">▶ OK render video</button>
@@ -627,6 +671,32 @@ function renderPrompts(elId, prompts, arcId) {
   el.innerHTML = header + cards;
 }
 
+// Render the char-prompts-review stage: 4 editable cards (one per
+// character variant). Like video-prompt review but 4 slots instead of 3.
+let charReviewCardsRendered = false;
+function renderCharReviewCards(prompts, critique) {
+  const container = document.getElementById('charPromptsReviewList');
+  if (charReviewCardsRendered) return;
+  charReviewCardsRendered = true;
+  const labels = ['Nhân vật 1 — Portrait', 'Nhân vật 2 — Action', 'Nhân vật 3 — Close-up', 'Nhân vật 4 — Context'];
+  container.innerHTML = '';
+  (prompts || []).slice(0, 4).forEach((text, i) => {
+    const c = (critique || [])[i] || { notes: [] };
+    const notesHtml = (c.notes || []).map((n) => {
+      const level = (n.level || 'ok').toLowerCase();
+      const icon = level === 'warn' ? '⚠' : level === 'fail' ? '✗' : '✓';
+      return `<div class="critique-item ${level}">${icon} ${n.text}</div>`;
+    }).join('');
+    const card = document.createElement('div');
+    card.className = 'review-card';
+    card.innerHTML = `
+      <div class="label">${labels[i] || ('Nhân vật ' + (i + 1))}</div>
+      <textarea data-idx="${i}">${text}</textarea>
+      ${notesHtml ? `<div class="critique">${notesHtml}</div>` : ''}`;
+    container.appendChild(card);
+  });
+}
+
 // Render the prompts-review stage: 3 editable cards with per-prompt
 // critique badges. Textareas are seeded from server state so user edits
 // persist across polls (ONLY until first render — after that, live typing
@@ -659,7 +729,8 @@ function renderReviewCards(prompts, critique, arcId) {
 // Stage transitions. The server's `state` field drives this; client just
 // renders whichever stage matches.
 // ───────────────────────────────────────────────────────────────────────
-const stages = ['Grid', 'CharGen', 'CharPick', 'PromptsReview', 'PromptsRegen', 'VideoGen', 'Done', 'Revise'];
+const stages = ['Grid', 'CharPromptsReview', 'CharPromptsRegen', 'CharGen', 'CharPick',
+                'PromptsReview', 'PromptsRegen', 'VideoGen', 'Done', 'Revise'];
 function showStage(name) {
   if (currentStage === name) return;
   currentStage = name;
@@ -798,20 +869,76 @@ async function requestRevise(mode) {
 document.getElementById('btnReviseRegen').addEventListener('click', () => requestRevise('regen'));
 document.getElementById('btnReviseRerender').addEventListener('click', () => requestRevise('rerender'));
 
-// Regen prompts → ask skill to rewrite in a different direction.
+// Char prompts approve — submit final (possibly-edited) char prompts.
+document.getElementById('btnApproveCharPrompts').addEventListener('click', async () => {
+  const btn = document.getElementById('btnApproveCharPrompts');
+  btn.disabled = true;
+  btn.textContent = 'Đang gửi…';
+  const prompts = Array.from(document.querySelectorAll('#charPromptsReviewList textarea'))
+    .map((t) => t.value.trim())
+    .filter((v) => v.length > 0);
+  if (prompts.length !== 4) {
+    showError('Cần đúng 4 char prompts');
+    btn.disabled = false;
+    btn.textContent = '▶ OK tạo 4 ảnh';
+    return;
+  }
+  try {
+    const res = await fetch('/api/picker-submit-char-prompts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ job: jobId, prompts }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+  } catch (e) {
+    showError(e.message);
+    btn.disabled = false;
+    btn.textContent = '▶ OK tạo 4 ảnh';
+  }
+});
+
+// Char prompts regen — with optional comment steering.
+document.getElementById('btnCharRegen').addEventListener('click', async () => {
+  const btn = document.getElementById('btnCharRegen');
+  const commentEl = document.getElementById('charRegenComment');
+  const comment = commentEl ? commentEl.value.trim() : '';
+  btn.disabled = true;
+  btn.textContent = 'Đang yêu cầu…';
+  try {
+    const res = await fetch('/api/picker-request-char-regen', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ job: jobId, comment }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+    charReviewCardsRendered = false;
+    if (commentEl) commentEl.value = '';
+  } catch (e) {
+    showError(e.message);
+    btn.disabled = false;
+    btn.textContent = '🔄 Tạo lại prompts';
+  }
+});
+
+// Regen prompts → ask skill to rewrite. Optional comment from the
+// review-stage textarea steers direction; empty = random different angle.
 document.getElementById('btnRegen').addEventListener('click', async () => {
   const btn = document.getElementById('btnRegen');
+  const commentEl = document.getElementById('regenComment');
+  const comment = commentEl ? commentEl.value.trim() : '';
   btn.disabled = true;
   btn.textContent = 'Đang yêu cầu…';
   try {
     const res = await fetch('/api/picker-request-regen', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ job: jobId }),
+      body: JSON.stringify({ job: jobId, comment }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
     // Reset the render-once flag so next poll renders fresh prompts.
     reviewCardsRendered = false;
+    // Clear the comment box — it's been sent; user can retype for the next round.
+    if (commentEl) commentEl.value = '';
   } catch (e) {
     showError(e.message);
     btn.disabled = false;
@@ -848,6 +975,26 @@ async function poll() {
         showStage('Grid');
         break;
       case 'grid_done':
+        // Transient state: skill is generating char prompts. Show a loader.
+        renderSummary('summaryCharRegen', job.grid || {});
+        showStage('CharPromptsRegen');
+        document.querySelector('#stageCharPromptsRegen .status').textContent = 'Đang viết 4 prompts nhân vật…';
+        break;
+      case 'char_prompts_review':
+        renderSummary('summaryCharPrompts', job.grid || {});
+        renderCharReviewCards(job.character_prompts, job.character_prompts_critique);
+        document.getElementById('btnApproveCharPrompts').disabled = false;
+        document.getElementById('btnApproveCharPrompts').textContent = '▶ OK tạo 4 ảnh';
+        document.getElementById('btnCharRegen').disabled = false;
+        document.getElementById('btnCharRegen').textContent = '🔄 Tạo lại prompts';
+        showStage('CharPromptsReview');
+        break;
+      case 'char_prompts_regen_requested':
+        renderSummary('summaryCharRegen', job.grid || {});
+        showStage('CharPromptsRegen');
+        document.querySelector('#stageCharPromptsRegen .status').textContent = 'Đang viết lại prompts nhân vật…';
+        break;
+      case 'char_prompts_approved':
       case 'char_gen':
         renderSummary('summaryChar', job.grid || {});
         showStage('CharGen');

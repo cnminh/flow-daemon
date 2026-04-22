@@ -171,6 +171,58 @@ app.post('/api/picker-submit-char', (req, res) => {
   }
 });
 
+// POST /api/picker-submit-char-prompts  { job, prompts: [p1, p2, p3, p4] }
+// User approves (possibly-edited) character prompts from the
+// char-prompts-review stage. State advances to `char_prompts_approved`
+// so the skill's polling loop picks it up + fires flow-cli ×4.
+app.post('/api/picker-submit-char-prompts', (req, res) => {
+  try {
+    const { job, prompts } = req.body || {};
+    if (!Array.isArray(prompts) || prompts.length !== 4) {
+      return res.status(400).json({ error: 'prompts must be array of 4 strings' });
+    }
+    if (!prompts.every((p) => typeof p === 'string' && p.trim().length > 0)) {
+      return res.status(400).json({ error: 'each char prompt must be non-empty string' });
+    }
+    const data = readJob(job);
+    if (!data) return res.status(404).json({ error: 'unknown job' });
+    if (data.state !== 'char_prompts_review') {
+      return res.status(409).json({ error: `cannot submit char prompts in state ${data.state}` });
+    }
+    data.character_prompts = prompts;
+    data.state = 'char_prompts_approved';
+    data.updated_at = new Date().toISOString();
+    writeJob(job, data);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// POST /api/picker-request-char-regen  { job, comment? }
+// User wants AI to regenerate char prompts (optionally with steering
+// comment). State moves to `char_prompts_regen_requested` so the skill
+// regens + loops back to `char_prompts_review`.
+app.post('/api/picker-request-char-regen', (req, res) => {
+  try {
+    const { job, comment } = req.body || {};
+    const data = readJob(job);
+    if (!data) return res.status(404).json({ error: 'unknown job' });
+    if (data.state !== 'char_prompts_review') {
+      return res.status(409).json({ error: `cannot request char regen in state ${data.state}` });
+    }
+    data.state = 'char_prompts_regen_requested';
+    if (typeof comment === 'string' && comment.trim()) {
+      data.revise_comment = comment.trim();
+    }
+    data.updated_at = new Date().toISOString();
+    writeJob(job, data);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
 // POST /api/picker-submit-prompts  { job, prompts: [act1, act2, act3] }
 // User approves (possibly-edited) prompts. Server stores final prompts +
 // advances state to `video_gen` so the skill picks up + fires flow-video-cli.
@@ -248,20 +300,24 @@ app.post('/api/picker-request-revise', (req, res) => {
   }
 });
 
-// POST /api/picker-request-regen  { job }
-// User wants AI to generate a DIFFERENT angle. State moves to a
-// short-lived `prompts_regen_requested` so the skill's polling loop
-// sees it + re-generates. Skill writes back to `prompts_review` with
-// new prompts + incremented regen_count.
+// POST /api/picker-request-regen  { job, comment? }
+// User wants AI to generate a DIFFERENT version in review stage. Comment
+// is optional — if present, steers the next rewrite; if absent, skill
+// just picks a fresh angle. State moves to a short-lived
+// `prompts_regen_requested` so the skill's polling loop picks it up +
+// re-generates. Skill writes back to `prompts_review` with new prompts.
 app.post('/api/picker-request-regen', (req, res) => {
   try {
-    const { job } = req.body || {};
+    const { job, comment } = req.body || {};
     const data = readJob(job);
     if (!data) return res.status(404).json({ error: 'unknown job' });
     if (data.state !== 'prompts_review') {
       return res.status(409).json({ error: `cannot request regen in state ${data.state}` });
     }
     data.state = 'prompts_regen_requested';
+    if (typeof comment === 'string' && comment.trim()) {
+      data.revise_comment = comment.trim();
+    }
     data.updated_at = new Date().toISOString();
     writeJob(job, data);
     res.json({ ok: true });
@@ -281,7 +337,8 @@ app.post('/api/picker-update', (req, res) => {
     if (!data) return res.status(404).json({ error: 'unknown job' });
     const ALLOWED = ['state', 'characters', 'video_url', 'video_progress', 'error',
                      'video_prompts', 'video_prompts_critique', 'regen_count',
-                     'revise_comment', 'video_version'];
+                     'revise_comment', 'video_version',
+                     'character_prompts', 'character_prompts_critique'];
     for (const k of ALLOWED) if (k in patch) data[k] = patch[k];
     data.updated_at = new Date().toISOString();
     writeJob(job, data);

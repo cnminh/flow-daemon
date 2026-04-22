@@ -130,6 +130,8 @@ Character **softens**, gives consumption instructions, warm invitation.
 - **No humans in background.** The character is the entire cast. Do NOT add `phía sau người người ăn X ngon miệng` or similar crowd shots — user explicitly removed this after the chuối v1 (and it was also in the original đu đủ template). Replace with inanimate ambience: same-ingredient fruits on a table, kitchen props, garden plants.
 - **Don't over-specify style.** Avoid `phong cách hoạt hình 3D` (user explicitly removed it). Let Veo choose its own visual register based on the realistic subject description.
 - **Keep each prompt ~80-150 Vietnamese words.** Longer prompts cause Veo to drop details; shorter prompts produce bland output.
+- **Dialogue budget: ≤24 Vietnamese words in quotes per act.** Each Veo clip is 8s × ~3 words/sec ≈ 24 words max. Longer quotes get truncated mid-sentence. Count quoted dialogue literally — prefer dropping a fact over rushing.
+- **Append speed hint:** add `giọng nói nhanh gọn dứt khoát` (or similar) near the end of each prompt so Veo renders faster speech rate.
 
 ## Continuity checklist (verify before showing user)
 
