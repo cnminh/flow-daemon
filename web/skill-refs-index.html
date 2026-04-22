@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Skill refs — make-viral-health-video-vi</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 16px 12px 48px;
+    font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    background: #0f1114;
+    color: #e6e7ea;
+  }
+  h1 {
+    font-size: 20px;
+    font-weight: 600;
+    margin: 8px 4px 12px;
+  }
+  h2 {
+    font-size: 15px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #8b93a7;
+    margin: 28px 4px 10px;
+    border-bottom: 1px solid #262a33;
+    padding-bottom: 6px;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+  @media (min-width: 768px) { .grid { grid-template-columns: repeat(4, 1fr); } }
+  .card {
+    background: #191c22;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid #262a33;
+  }
+  .card img {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    object-fit: cover;
+    display: block;
+    background: #0a0b0e;
+  }
+  .card .label {
+    padding: 8px 10px 10px;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.35;
+  }
+  .card .id {
+    font-size: 10px;
+    color: #8b93a7;
+    margin-top: 2px;
+    font-family: ui-monospace, Menlo, monospace;
+  }
+  .counter {
+    float: right;
+    font-size: 12px;
+    color: #8b93a7;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+</style>
+</head>
+<body>
+<h1>🧪 Skill ref library — 26 hình</h1>
+<div id="root"></div>
+
+<script>
+(async () => {
+  const res = await fetch('skill-refs/manifest.json');
+  const manifest = await res.json();
+  const byCategory = {};
+  for (const ref of manifest.refs) {
+    (byCategory[ref.category] ||= []).push(ref);
+  }
+  const order = ['setting', 'treatment', 'protagonist', 'arc'];
+  const titles = {
+    setting: 'SETTING (bối cảnh)',
+    treatment: 'TREATMENT (phong cách quay)',
+    protagonist: 'PROTAGONIST (nhân vật chính)',
+    arc: 'ARC (cốt truyện)',
+  };
+  const root = document.getElementById('root');
+  for (const cat of order) {
+    if (!byCategory[cat]) continue;
+    const refs = byCategory[cat];
+    const h = document.createElement('h2');
+    h.innerHTML = `${titles[cat]}<span class="counter">${refs.length} refs</span>`;
+    root.appendChild(h);
+    const grid = document.createElement('div');
+    grid.className = 'grid';
+    for (const ref of refs) {
+      const card = document.createElement('a');
+      card.className = 'card';
+      card.href = `skill-refs/${ref.image}`;
+      card.target = '_blank';
+      card.innerHTML = `
+        <img src="skill-refs/${ref.image}" alt="${ref.label}" loading="lazy" />
+        <div class="label">${ref.label}<div class="id">${ref.id}</div></div>`;
+      grid.appendChild(card);
+    }
+    root.appendChild(grid);
+  }
+})();
+</script>
+</body>
+</html>

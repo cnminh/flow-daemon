@@ -1,0 +1,563 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Make viral health video</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0f1114;
+    --panel: #191c22;
+    --border: #262a33;
+    --text: #e6e7ea;
+    --muted: #8b93a7;
+    --accent: #4ade80;
+    --accent-dim: #22c55e33;
+    --danger: #ef4444;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0;
+    padding: 16px 12px 120px;
+    font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+  h1 { font-size: 20px; font-weight: 600; margin: 4px 4px 4px; }
+  h1 .subject {
+    display: block;
+    font-size: 14px;
+    font-weight: 400;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+  h2 {
+    font-size: 14px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    margin: 28px 4px 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  h2 .hint {
+    float: right;
+    font-size: 11px;
+    color: var(--muted);
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  /* Image grids: 2-row horizontal scroll (TikTok-style category carousel).
+     Cards are fixed width so the container clips with peek at the next
+     off-screen card — visual cue that user can swipe. */
+  .grid {
+    display: grid;
+    grid-template-rows: repeat(2, auto);
+    grid-auto-flow: column;
+    grid-auto-columns: 140px;
+    gap: 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: x mandatory;
+    padding: 4px 0 10px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .grid::-webkit-scrollbar { height: 4px; }
+  .grid::-webkit-scrollbar-track { background: transparent; }
+  .grid::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  @media (min-width: 768px) {
+    .grid { grid-auto-columns: 160px; gap: 10px; }
+  }
+
+  /* Sound grid — only 3 options, show all at once, no scroll. */
+  .grid.sound-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: none;
+    grid-auto-flow: row;
+    overflow: visible;
+    gap: 10px;
+  }
+
+  .card {
+    background: var(--panel);
+    border-radius: 12px;
+    overflow: hidden;
+    border: 2px solid var(--border);
+    cursor: pointer;
+    transition: border-color 0.12s, transform 0.12s;
+    user-select: none;
+    scroll-snap-align: start;
+  }
+  .card:active { transform: scale(0.98); }
+  .card.selected {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 4px var(--accent-dim);
+  }
+  .card img {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    object-fit: cover;
+    display: block;
+    background: #0a0b0e;
+  }
+  .card .label {
+    padding: 6px 8px 8px;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.3;
+  }
+  .sound-card {
+    background: var(--panel);
+    border: 2px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 10px;
+    text-align: center;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: border-color 0.12s, transform 0.12s;
+  }
+  .sound-card:active { transform: scale(0.98); }
+  .sound-card.selected {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 4px var(--accent-dim);
+  }
+  .sound-card .emoji { display: block; font-size: 32px; margin-bottom: 4px; }
+
+  .submit-bar {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
+    background: linear-gradient(to top, var(--bg) 60%, transparent);
+    z-index: 10;
+  }
+  .submit-btn {
+    display: block;
+    width: 100%;
+    padding: 14px;
+    font-size: 15px;
+    font-weight: 600;
+    color: #0f1114;
+    background: var(--accent);
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: opacity 0.12s, transform 0.12s;
+  }
+  .submit-btn:disabled {
+    background: var(--border);
+    color: var(--muted);
+    cursor: not-allowed;
+  }
+  .submit-btn:not(:disabled):active { transform: scale(0.98); }
+
+  .summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 12px 4px 20px;
+  }
+  .summary .badge {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 5px 10px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .summary .badge strong { color: var(--text); font-weight: 500; }
+
+  .loader {
+    text-align: center;
+    padding: 48px 16px;
+  }
+  .loader .spinner {
+    width: 48px;
+    height: 48px;
+    border: 4px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    margin: 0 auto 16px;
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loader .status { font-size: 15px; margin-bottom: 4px; }
+  .loader .detail { font-size: 13px; color: var(--muted); }
+
+  .video-wrap {
+    border-radius: 12px;
+    overflow: hidden;
+    background: #000;
+    margin: 4px 0 16px;
+  }
+  .video-wrap video { width: 100%; display: block; }
+
+  .hidden { display: none !important; }
+
+  .error {
+    background: #442024;
+    border: 1px solid var(--danger);
+    border-radius: 12px;
+    padding: 12px;
+    margin: 12px 0;
+    color: #fecaca;
+    font-size: 13px;
+  }
+</style>
+</head>
+<body>
+
+<h1>
+  🎬 Tạo video sức khoẻ
+  <span class="subject" id="subjectLabel">Đang tải…</span>
+</h1>
+
+<div id="stateError" class="error hidden"></div>
+
+<!-- ═══ STAGE 1: GRID PICKER ═══ -->
+<section id="stageGrid">
+  <h2>Setting (bối cảnh) <span class="hint">chọn 1</span></h2>
+  <div id="gridSetting" class="grid"></div>
+
+  <h2>Treatment (phong cách quay) <span class="hint">chọn 1</span></h2>
+  <div id="gridTreatment" class="grid"></div>
+
+  <h2>Protagonist (nhân vật chính) <span class="hint">chọn 1</span></h2>
+  <div id="gridProtagonist" class="grid"></div>
+
+  <h2>Arc (cốt truyện) <span class="hint">chọn 1</span></h2>
+  <div id="gridArc" class="grid"></div>
+
+  <h2>Sound (âm thanh) <span class="hint">chọn 1</span></h2>
+  <div class="grid sound-grid" id="gridSound">
+    <div class="sound-card" data-sound="dialogue"><span class="emoji">🎤</span>Lời thoại</div>
+    <div class="sound-card" data-sound="asmr"><span class="emoji">🎧</span>ASMR</div>
+    <div class="sound-card" data-sound="music"><span class="emoji">🎵</span>Nhạc nền</div>
+  </div>
+
+  <div class="submit-bar">
+    <button id="btnSubmitGrid" class="submit-btn" disabled>Tạo nhân vật →</button>
+  </div>
+</section>
+
+<!-- ═══ STAGE 2: CHARACTER GEN WAIT ═══ -->
+<section id="stageCharGen" class="hidden">
+  <div id="summaryChar" class="summary"></div>
+  <div class="loader">
+    <div class="spinner"></div>
+    <div class="status">Đang tạo 4 nhân vật…</div>
+    <div class="detail">Mất khoảng 2 phút. Đừng đóng trang này.</div>
+  </div>
+</section>
+
+<!-- ═══ STAGE 3: CHARACTER PICK ═══ -->
+<section id="stageCharPick" class="hidden">
+  <div id="summaryCharPick" class="summary"></div>
+  <h2>Chọn nhân vật <span class="hint">chọn 1</span></h2>
+  <div id="gridCharacters" class="grid"></div>
+  <div class="submit-bar">
+    <button id="btnSubmitChar" class="submit-btn" disabled>Render video →</button>
+  </div>
+</section>
+
+<!-- ═══ STAGE 4: VIDEO GEN WAIT ═══ -->
+<section id="stageVideoGen" class="hidden">
+  <div id="summaryVideo" class="summary"></div>
+  <div class="loader">
+    <div class="spinner"></div>
+    <div class="status">Đang render video…</div>
+    <div class="detail" id="videoGenDetail">Mất khoảng 10 phút. Trang sẽ tự reload khi xong.</div>
+  </div>
+</section>
+
+<!-- ═══ STAGE 5: VIDEO DONE ═══ -->
+<section id="stageDone" class="hidden">
+  <div class="video-wrap">
+    <video id="videoPlayer" controls autoplay playsinline></video>
+  </div>
+  <div id="summaryDone" class="summary"></div>
+  <div class="submit-bar">
+    <button id="btnNew" class="submit-btn">Làm video mới ↻</button>
+  </div>
+</section>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════
+// Picker state machine. Drives a single-page wizard through 5 stages.
+// Reads job state from /api/picker-status?job=<id> and POSTs selections.
+// ═══════════════════════════════════════════════════════════════════════
+
+const API = {
+  status: (id) => `/api/picker-status?job=${encodeURIComponent(id)}`,
+  submitGrid: '/api/picker-submit-grid',
+  submitChar: '/api/picker-submit-char',
+};
+
+const REF_BASE = '/skill-refs';
+const POLL_INTERVAL_MS = 5000;
+
+// Job ID resolution: explicit ?job= wins, else fall back to server's
+// "current active job" pointer so the picker URL stays stable across videos.
+let jobId = new URLSearchParams(location.search).get('job');
+async function resolveJobId() {
+  if (jobId) return;
+  try {
+    const res = await fetch('/api/picker-current', { cache: 'no-store' });
+    if (res.status === 404) {
+      document.body.innerHTML = '<div class="error" style="margin:24px auto;max-width:480px;">Chưa có video nào đang tạo. Nói với Claude "làm video về &lt;chủ đề&gt;" trước.</div>';
+      throw new Error('no active job');
+    }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const j = await res.json();
+    jobId = j.job_id;
+  } catch (e) {
+    document.body.innerHTML = `<div class="error" style="margin:24px auto;max-width:480px;">Lỗi resolve job: ${e.message}</div>`;
+    throw e;
+  }
+}
+
+// Local selection state. Server is source of truth for job state.
+const selection = {
+  setting: null,
+  treatment: null,
+  protagonist: null,
+  arc: null,
+  sound: null,
+  char_index: null,
+};
+
+let manifestByCategory = {};   // category → refs[]
+let currentStage = null;
+
+// ───────────────────────────────────────────────────────────────────────
+// Fetch manifest of ref images (served alongside /skill-refs/).
+// Build 4 section grids from manifest data.
+// ───────────────────────────────────────────────────────────────────────
+async function loadManifest() {
+  const res = await fetch(`${REF_BASE}/manifest.json`);
+  const m = await res.json();
+  for (const ref of m.refs) (manifestByCategory[ref.category] ||= []).push(ref);
+  renderCategoryGrid('gridSetting', 'setting');
+  renderCategoryGrid('gridTreatment', 'treatment');
+  renderCategoryGrid('gridProtagonist', 'protagonist');
+  renderCategoryGrid('gridArc', 'arc');
+}
+
+function renderCategoryGrid(containerId, category) {
+  const el = document.getElementById(containerId);
+  el.innerHTML = '';
+  for (const ref of (manifestByCategory[category] || [])) {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.dataset.id = ref.id;
+    card.dataset.category = category;
+    card.innerHTML = `
+      <img src="${REF_BASE}/${ref.image}" alt="${ref.label}" loading="lazy" />
+      <div class="label">${ref.label}</div>`;
+    card.addEventListener('click', () => pickCard(category, ref.id, card));
+    el.appendChild(card);
+  }
+}
+
+function pickCard(category, id, cardEl) {
+  selection[category] = id;
+  // Deselect siblings + select this one
+  cardEl.parentElement.querySelectorAll('.card.selected').forEach((c) => c.classList.remove('selected'));
+  cardEl.classList.add('selected');
+  updateSubmitGridButton();
+}
+
+// Sound cards: delegate listeners since they're already in DOM.
+document.querySelectorAll('#gridSound .sound-card').forEach((card) => {
+  card.addEventListener('click', () => {
+    selection.sound = card.dataset.sound;
+    document.querySelectorAll('#gridSound .sound-card').forEach((c) => c.classList.remove('selected'));
+    card.classList.add('selected');
+    updateSubmitGridButton();
+  });
+});
+
+function updateSubmitGridButton() {
+  const ok = ['setting', 'treatment', 'protagonist', 'arc', 'sound'].every((k) => selection[k]);
+  document.getElementById('btnSubmitGrid').disabled = !ok;
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// Summary badges — shown at top during char-gen, char-pick, video-gen,
+// done stages so the user keeps context of what they picked.
+// ───────────────────────────────────────────────────────────────────────
+function renderSummary(elId, grid) {
+  const el = document.getElementById(elId);
+  el.innerHTML = '';
+  const labels = {
+    setting: 'Setting',
+    treatment: 'Treatment',
+    protagonist: 'Protagonist',
+    arc: 'Arc',
+    sound: 'Sound',
+  };
+  const soundLabels = { dialogue: '🎤 lời thoại', asmr: '🎧 ASMR', music: '🎵 nhạc' };
+  for (const key of ['setting', 'treatment', 'protagonist', 'arc', 'sound']) {
+    const id = grid[key];
+    if (!id) continue;
+    const label = key === 'sound'
+      ? soundLabels[id] || id
+      : (manifestByCategory[key] || []).find((r) => r.id === id)?.label || id;
+    const badge = document.createElement('span');
+    badge.className = 'badge';
+    badge.innerHTML = `${labels[key]}: <strong>${label}</strong>`;
+    el.appendChild(badge);
+  }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// Stage transitions. The server's `state` field drives this; client just
+// renders whichever stage matches.
+// ───────────────────────────────────────────────────────────────────────
+const stages = ['Grid', 'CharGen', 'CharPick', 'VideoGen', 'Done'];
+function showStage(name) {
+  if (currentStage === name) return;
+  currentStage = name;
+  for (const s of stages) document.getElementById(`stage${s}`).classList.toggle('hidden', s !== name);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function renderCharacterGrid(urls) {
+  const el = document.getElementById('gridCharacters');
+  el.innerHTML = '';
+  urls.forEach((url, i) => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.dataset.index = i;
+    card.innerHTML = `
+      <img src="${url}" alt="nhân vật ${i + 1}" loading="lazy" />
+      <div class="label">Nhân vật ${i + 1}</div>`;
+    card.addEventListener('click', () => {
+      selection.char_index = i;
+      el.querySelectorAll('.card.selected').forEach((c) => c.classList.remove('selected'));
+      card.classList.add('selected');
+      document.getElementById('btnSubmitChar').disabled = false;
+    });
+    el.appendChild(card);
+  });
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// Submit handlers.
+// ───────────────────────────────────────────────────────────────────────
+document.getElementById('btnSubmitGrid').addEventListener('click', async () => {
+  const btn = document.getElementById('btnSubmitGrid');
+  btn.disabled = true;
+  btn.textContent = 'Đang gửi…';
+  try {
+    const res = await fetch(API.submitGrid, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ job: jobId, ...selection }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+    // Server will update state → poll will pick it up.
+  } catch (e) {
+    showError(e.message);
+    btn.disabled = false;
+    btn.textContent = 'Tạo nhân vật →';
+  }
+});
+
+document.getElementById('btnSubmitChar').addEventListener('click', async () => {
+  const btn = document.getElementById('btnSubmitChar');
+  btn.disabled = true;
+  btn.textContent = 'Đang gửi…';
+  try {
+    const res = await fetch(API.submitChar, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ job: jobId, char_index: selection.char_index }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+  } catch (e) {
+    showError(e.message);
+    btn.disabled = false;
+    btn.textContent = 'Render video →';
+  }
+});
+
+document.getElementById('btnNew').addEventListener('click', () => {
+  // Strip job param, return to chat.
+  location.href = '/';
+});
+
+// ───────────────────────────────────────────────────────────────────────
+// Poll server state every POLL_INTERVAL_MS. Drive stage transitions +
+// populate character grid + video URL when they become available.
+// ───────────────────────────────────────────────────────────────────────
+function showError(msg) {
+  const el = document.getElementById('stateError');
+  el.textContent = `Lỗi: ${msg}`;
+  el.classList.remove('hidden');
+}
+
+async function poll() {
+  try {
+    const res = await fetch(API.status(jobId), { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const job = await res.json();
+
+    // Subject header
+    document.getElementById('subjectLabel').textContent = job.subject || '—';
+
+    if (job.error) {
+      showError(job.error);
+      return;
+    }
+
+    switch (job.state) {
+      case 'init':
+        showStage('Grid');
+        break;
+      case 'grid_done':
+      case 'char_gen':
+        renderSummary('summaryChar', job.grid || {});
+        showStage('CharGen');
+        break;
+      case 'char_pick':
+        renderSummary('summaryCharPick', job.grid || {});
+        renderCharacterGrid((job.characters || []).map((c) => c.url));
+        showStage('CharPick');
+        break;
+      case 'char_picked':
+      case 'video_gen':
+        renderSummary('summaryVideo', job.grid || {});
+        document.getElementById('videoGenDetail').textContent =
+          job.video_progress || 'Mất khoảng 10 phút. Trang sẽ tự reload khi xong.';
+        showStage('VideoGen');
+        break;
+      case 'done':
+        renderSummary('summaryDone', job.grid || {});
+        document.getElementById('videoPlayer').src = job.video_url;
+        showStage('Done');
+        break;
+      default:
+        showError(`Unknown state: ${job.state}`);
+    }
+  } catch (e) {
+    console.error('poll failed', e);
+  }
+}
+
+// Boot.
+(async () => {
+  await resolveJobId();
+  await loadManifest();
+  await poll();
+  setInterval(poll, POLL_INTERVAL_MS);
+})();
+</script>
+</body>
+</html>
