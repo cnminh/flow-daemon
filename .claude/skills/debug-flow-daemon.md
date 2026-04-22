@@ -108,6 +108,45 @@ Missing any of these mid-run is a clue about which step broke.
 - **Verify:** `grep -iE "Start slot|Upload image|frame uploaded" ~/.flow-daemon/daemon.log` — all three lines should appear for a successful upload. If "frame uploaded" is present but the resulting video ignores the frame, Flow's state machine didn't bind (probe selector drifted).
 - **Probe:** `scripts/dev-probe-frame-upload.js` runs the full path with time-series screenshots — no quota burn.
 
+### Veo selector timeout mid-run (`crop_*` / aspect button) — transient
+- **Symptom:** flow-video-cli returns `error_code: timeout` with
+  `waiting for locator('button:not(.flow_tab_slider_trigger):has-text("crop_")')`
+  or similar aspect-button selector. Happens on second+ run after a
+  prior successful run.
+- **Root cause:** Flow's Chromium page carries over sub-mode state
+  between jobs (ex: stuck in Frames-to-Video after a previous
+  `--frame` upload). `ensureVideoModeForNewScene` opens the popover
+  but aspect options render differently in the stale sub-mode.
+- **Fix:** kill the daemon + clear profile lock, then retry. Fresh
+  Chromium page rehydrates to a clean state.
+  ```bash
+  lsof -iTCP:47321 -sTCP:LISTEN -t | xargs -r kill -TERM
+  pkill -9 -f "user-data-dir=/Users/cuongnguyen/.flow-daemon/profile"
+  rm -f ~/.flow-daemon/profile/Singleton{Lock,Socket,Cookie}
+  ```
+- **If recurring:** page cleanup step in `runJob` is missing — reset
+  to grid before each new job. Track in `lib/browser.js`.
+
+### Bash/shell breaks on Vietnamese multi-line prompts passed to flow-video-cli
+- **Symptom:** `flow-video-cli generate` exits 400
+  `"prompts must be non-empty strings"` despite prompts being populated
+  in state.json. Python `json.loads` on a bash-quoted subprocess stdout
+  can error with `Invalid control character` because user-edited textarea
+  values contain real `\n` / `\r`.
+- **Root cause:** shell loses data across pipe boundaries when Vietnamese
+  strings contain quotes, newlines, or Unicode combining chars. `awk` /
+  `sed` extracting prompts by line fails silently.
+- **Fix:** use Python `subprocess.run(['flow-video-cli','generate', *prompts, ...])`
+  with prompts as argv array. Python passes them as separate argv entries
+  to the child — no shell escaping happens.
+  ```python
+  import subprocess, json, urllib.request
+  d = json.loads(urllib.request.urlopen(url).read())
+  subprocess.run(['flow-video-cli', 'generate', *d['video_prompts'], '--frame', frame, '--output', out, '--json'])
+  ```
+- **Pattern:** never use `bash | awk` or `bash | jq -r` on multi-line
+  strings. Always Python in-process.
+
 ### Video output has no sound on one clip
 - **Check:** each clip's streams via `ffprobe -show_streams`. Some Veo clips come back video-only.
 - **Workaround:** ffmpeg concat currently assumes each input has both v+a. If one lacks audio, add `-f lavfi -i anullsrc` and route around the missing stream. Not yet hit in production.

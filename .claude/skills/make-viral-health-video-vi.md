@@ -314,6 +314,53 @@ stochastically — a fresh run gives a different Veo seed.
 Both modes keep iteration history (`final-v1.mp4`, `final-v2.mp4`, …)
 and allow unlimited loops.
 
+## Non-human protagonist drift protocol (CRITICAL)
+
+When protagonist = villain / organ / condition / ghost (anything without
+a human body), Act 3 is the most drift-prone act because its natural
+"resolution tone" bleeds toward "helpful human narrator giving advice".
+
+Observed failures (bơ/chuối session logs):
+- Cholesterol villain + `"hai tay dang rộng chào đón"` + advisory dialogue
+  → Veo substituted a human giving health advice in Act 3.
+
+Mandatory rules for non-human Act 3:
+
+1. **Repeat character signature at sentence start** — e.g.,
+   `Cục mỡ cholesterol quái vật vàng nhờn mắt đỏ ...` as first 5-8 words.
+   Don't just say "nhân vật" or assume prior context.
+2. **No human body parts** — drop `tay dang rộng`, `vẫy tay`, `cúi đầu`
+   etc. Replace with character-appropriate mechanics: `thân mềm lại`,
+   `tan chảy thành khói`, `lơ lửng bay nhẹ`, `vỡ thành mảnh`, `biến mất`.
+3. **Keep POV tone consistent** — villain dialogue should stay in
+   villain voice even when "defeated". Not `"bổ sung vitamin C giúp..."`
+   (wellness advisor voice) but `"các thứ này đánh bại tao rồi, bọn mày thắng"`
+   (villain voice conceding).
+4. **Short dialogue** — 1-2 short lines, not 4 instructions piled up.
+   Long advisory lines pull Veo toward human narrator template.
+5. **Show defeat/transformation mechanism visually** — user complaint
+   on bơ session: "Cục mỡ biến mất nhưng không thấy vì sao". Solution:
+   concrete agents (chanh warrior's sword, rau xanh's fiber ropes,
+   tỏi's allicin) visibly destroying/binding the character. Makes
+   narrative cohesion pay off.
+
+## Regen with direction (vs random regen)
+
+When user requests `prompts_regen_requested` with a comment, use the
+comment as LITERAL direction, not inspiration. Ex:
+
+- Comment: "Act 3 chưa đủ visual, thay bắn tia bằng dũng sĩ chanh tỏi
+  cầm gươm chém"
+- Wrong regen: try a different random angle, keep similar shooting-ray
+  mechanic.
+- Right regen: literally introduce personified lemon + garlic warriors,
+  drop the rays, put swords in their hands, stage a chop.
+
+Random regen (no comment) is for users who want "try again, surprise me".
+Comment-driven regen is surgical — take the feedback verbatim and
+translate into prompt changes. Don't overthink what the user "really
+wanted" — they wrote what they wanted.
+
 ## Character-variants formula (4 angles)
 
 Apply these 4 variants to the picked **protagonist × setting × treatment**
