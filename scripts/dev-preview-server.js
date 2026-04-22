@@ -198,6 +198,42 @@ app.post('/api/picker-submit-prompts', (req, res) => {
   }
 });
 
+// POST /api/picker-request-revise  { job, comment }
+// After a video is done, user can request a script revision with a
+// free-form comment (e.g., "Act 3 bị lệch thành người"). Server moves
+// state to `revise_requested` with the comment so the skill can
+// regenerate prompts incorporating the feedback. Old final.mp4 is
+// preserved as final-v<n>.mp4 before the next render.
+app.post('/api/picker-request-revise', (req, res) => {
+  try {
+    const { job, comment } = req.body || {};
+    if (typeof comment !== 'string' || comment.trim().length === 0) {
+      return res.status(400).json({ error: 'comment required' });
+    }
+    const data = readJob(job);
+    if (!data) return res.status(404).json({ error: 'unknown job' });
+    if (data.state !== 'done') {
+      return res.status(409).json({ error: `cannot revise in state ${data.state}` });
+    }
+    // Archive the current final.mp4 so iteration history is preserved.
+    const dir = jobDir(job);
+    const current = path.join(dir, 'final.mp4');
+    if (fs.existsSync(current)) {
+      const version = (data.video_version || 1);
+      const archived = path.join(dir, `final-v${version}.mp4`);
+      try { fs.renameSync(current, archived); } catch {}
+      data.video_version = version + 1;
+    }
+    data.state = 'revise_requested';
+    data.revise_comment = comment.trim();
+    data.updated_at = new Date().toISOString();
+    writeJob(job, data);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
 // POST /api/picker-request-regen  { job }
 // User wants AI to generate a DIFFERENT angle. State moves to a
 // short-lived `prompts_regen_requested` so the skill's polling loop
@@ -230,7 +266,8 @@ app.post('/api/picker-update', (req, res) => {
     const data = readJob(job);
     if (!data) return res.status(404).json({ error: 'unknown job' });
     const ALLOWED = ['state', 'characters', 'video_url', 'video_progress', 'error',
-                     'video_prompts', 'video_prompts_critique', 'regen_count'];
+                     'video_prompts', 'video_prompts_critique', 'regen_count',
+                     'revise_comment', 'video_version'];
     for (const k of ALLOWED) if (k in patch) data[k] = patch[k];
     data.updated_at = new Date().toISOString();
     writeJob(job, data);

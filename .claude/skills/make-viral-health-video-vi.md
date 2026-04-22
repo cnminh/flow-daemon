@@ -278,6 +278,30 @@ curl -sS -X POST -H "Content-Type: application/json" \
 
 Announce in chat: "Video xong! Mở lại link picker sẽ thấy player tự bật."
 
+### Stage 5 — Post-done revise loop
+
+User watching the final video may want changes. The done stage exposes
+a textarea + "Render lại với góp ý" button that POSTs a free-form
+comment to `/api/picker-request-revise`. Server moves state to
+`revise_requested` with `revise_comment`, archives the current
+`final.mp4` as `final-v<n>.mp4`, and increments `video_version`.
+
+Skill handler for `revise_requested`:
+
+1. Read `video_prompts` (last run) + `revise_comment` (user feedback).
+2. Generate REVISED prompts that **specifically address the comment**:
+   - If comment flags a drift ("Act 3 bị lệch thành người") → tighten
+     the drifting act's character-lock cues, remove human body metaphors.
+   - If comment asks for pacing ("prompt 2 quá dài") → trim dialogue.
+   - If comment asks for added content ("thêm cảnh so sánh") → work it in.
+   - Preserve everything user DIDN'T complain about.
+3. Re-run the 5-dimension self-critique.
+4. Update state → `prompts_review` with new prompts + critique + keep
+   `revise_comment` visible so user sees what feedback drove the change.
+
+Subsequent flow is identical to stage 4b onwards: user reviews, approves
+or regens, video renders, new done. Iteration is unlimited.
+
 ## Character-variants formula (4 angles)
 
 Apply these 4 variants to the picked **protagonist × setting × treatment**

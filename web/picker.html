@@ -261,6 +261,48 @@
   .critique-item.fail { color: #fca5a5; background: #2a0808; border-left: 3px solid #ef4444; }
   .review-bar { display: grid; grid-template-columns: 1fr 2fr; gap: 8px; }
 
+  .revise-section {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px;
+    margin: 20px 0 16px;
+  }
+  .revise-section h2 {
+    margin: 0 0 6px;
+    padding: 0;
+    border: none;
+    font-size: 15px;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--text);
+  }
+  .revise-section .revise-hint {
+    margin: 0 0 10px;
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.4;
+  }
+  .revise-section textarea {
+    width: 100%;
+    min-height: 80px;
+    background: #0a0b0e;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px;
+    color: var(--text);
+    font-size: 14px;
+    font-family: inherit;
+    line-height: 1.4;
+    resize: vertical;
+    box-sizing: border-box;
+    margin-bottom: 10px;
+  }
+  .revise-section textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+
   .prompts-wrap { margin: 12px 0 20px; }
   .prompts-wrap h2 { margin-top: 20px; }
   .prompt-card {
@@ -398,8 +440,27 @@
   </div>
   <div id="summaryDone" class="summary"></div>
   <div class="prompts-wrap" id="promptsDone"></div>
+
+  <!-- Revise: user feedback → AI rewrites prompts → back to review → re-render. -->
+  <div class="revise-section">
+    <h2>✏️ Chỉnh sửa kịch bản</h2>
+    <p class="revise-hint">Góp ý cụ thể (vd: "Act 3 bị lệch thành người", "prompt 2 quá dài", "thêm cảnh so sánh với người không ăn").</p>
+    <textarea id="reviseComment" placeholder="Nhập góp ý..."></textarea>
+    <button id="btnRevise" class="submit-btn-secondary" disabled>🔄 Render lại với góp ý</button>
+  </div>
+
   <div class="submit-bar">
     <button id="btnNew" class="submit-btn">Làm video mới ↻</button>
+  </div>
+</section>
+
+<!-- ═══ STAGE 5.5: REVISE REQUESTED WAIT ═══ -->
+<section id="stageRevise" class="hidden">
+  <div id="summaryReviseWait" class="summary"></div>
+  <div class="loader">
+    <div class="spinner"></div>
+    <div class="status">Đang viết lại kịch bản theo góp ý…</div>
+    <div class="detail" id="reviseCommentEcho"></div>
   </div>
 </section>
 
@@ -588,7 +649,7 @@ function renderReviewCards(prompts, critique, arcId) {
 // Stage transitions. The server's `state` field drives this; client just
 // renders whichever stage matches.
 // ───────────────────────────────────────────────────────────────────────
-const stages = ['Grid', 'CharGen', 'CharPick', 'PromptsReview', 'PromptsRegen', 'VideoGen', 'Done'];
+const stages = ['Grid', 'CharGen', 'CharPick', 'PromptsReview', 'PromptsRegen', 'VideoGen', 'Done', 'Revise'];
 function showStage(name) {
   if (currentStage === name) return;
   currentStage = name;
@@ -689,6 +750,36 @@ document.getElementById('btnApproveVideo').addEventListener('click', async () =>
   }
 });
 
+// Enable Revise button only when comment has content.
+document.getElementById('reviseComment').addEventListener('input', (ev) => {
+  document.getElementById('btnRevise').disabled = ev.target.value.trim().length === 0;
+});
+
+// Revise → user feedback gets sent to skill, which rewrites prompts
+// incorporating the comment + loops back to review.
+document.getElementById('btnRevise').addEventListener('click', async () => {
+  const btn = document.getElementById('btnRevise');
+  const comment = document.getElementById('reviseComment').value.trim();
+  if (!comment) return;
+  btn.disabled = true;
+  btn.textContent = 'Đang gửi góp ý…';
+  try {
+    const res = await fetch('/api/picker-request-revise', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ job: jobId, comment }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+    // Resume polling — we stopped at done, so re-arm now that state will change.
+    if (!pollTimer) pollTimer = setInterval(poll, POLL_INTERVAL_MS);
+    reviewCardsRendered = false; // clear so new prompts render fresh on review
+  } catch (e) {
+    showError(e.message);
+    btn.disabled = false;
+    btn.textContent = '🔄 Render lại với góp ý';
+  }
+});
+
 // Regen prompts → ask skill to rewrite in a different direction.
 document.getElementById('btnRegen').addEventListener('click', async () => {
   const btn = document.getElementById('btnRegen');
@@ -783,24 +874,35 @@ async function poll() {
       case 'done': {
         renderSummary('summaryDone', job.grid || {});
         renderPrompts('promptsDone', job.video_prompts, (job.grid || {}).arc);
-        // Only set src ONCE — otherwise every 5s poll resets playback.
+        // Append version query so src changes across revisions (triggers
+        // player reload). Otherwise same /final.mp4 URL would let the
+        // old video stick in cache.
         const player = document.getElementById('videoPlayer');
-        const expectedSrc = job.video_url;
+        const v = job.video_version || 1;
+        const expectedSrc = `${job.video_url}?v=${v}`;
         if (!player.src.endsWith(expectedSrc)) {
           player.src = expectedSrc;
         }
-        // Surface download button.
         const dl = document.getElementById('btnDownload');
         if (dl) {
-          dl.href = expectedSrc;
-          dl.download = `video-${jobId}.mp4`;
+          dl.href = job.video_url;
+          dl.download = `video-${jobId}-v${v}.mp4`;
         }
+        // Reset revise UI in case user already typed then came back.
+        document.getElementById('reviseComment').value = '';
+        document.getElementById('btnRevise').disabled = true;
+        document.getElementById('btnRevise').textContent = '🔄 Render lại với góp ý';
         showStage('Done');
-        // Stop polling — job is terminal. Saves bandwidth + prevents
-        // spurious state refreshes that reload the video.
+        // Stop polling — job is terminal. Revise button will re-arm.
         if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
         break;
       }
+      case 'revise_requested':
+        renderSummary('summaryReviseWait', job.grid || {});
+        document.getElementById('reviseCommentEcho').textContent =
+          'Góp ý: ' + (job.revise_comment || '—');
+        showStage('Revise');
+        break;
       default:
         showError(`Unknown state: ${job.state}`);
     }
