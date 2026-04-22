@@ -30,29 +30,33 @@ skill (= Claude) polls state and does creative work + fires CLIs.
  Claude (skill)          Server          Picker UI          User
       │                    │                │                │
       │─ picker-init ─────►│                │                │
-      │                    │                │                │
-      │                    │                │                │
       │──── URL to user ───┼────────────────┼───────────────►│
       │                    │                │                │
-      │  poll status ◄────►│                │                │
-      │                    │                │                │
       │                    │◄── load page ──┤◄── opens URL ──┤
-      │                    │─ ref manifest ►│                │
-      │                    │  poll status ◄►│                │
-      │                    │                │                │
       │                    │                │◄── pick 5 ─────┤
       │                    │◄── submit ─────┤                │
-      │  state = grid_done │                │                │
-      │                    │                │                │
-      │─ gen 4 chars ─────►│  flow-cli ×4   │                │
-      │─ update chars ────►│                │                │
-      │  state = char_pick │                │                │
-      │                    │                │                │
+      │  state = grid_done │                                 │
+      │                                                      │
+      │─ gen 4 chars ─────► flow-cli ×4                      │
+      │─ update chars ────►                                  │
+      │  state = char_pick                                   │
+      │                                                      │
       │                    │                │◄── pick char ──┤
       │                    │◄── submit ─────┤                │
       │  state = char_picked                                 │
       │                                                      │
-      │─ gen video ─────────────► flow-video-cli --frame     │
+      │─ gen prompts + critique ─────────────────────────────│
+      │─ update state ─────►                                 │
+      │  state = prompts_review                              │
+      │                                                      │
+      │                    │                │◄── edit/regen/
+      │                    │                │    approve ────┤
+      │                    │◄── submit ─────┤                │
+      │  state = video_gen (approved)                        │
+      │   OR                                                 │
+      │  state = prompts_regen_requested → regen → loop back │
+      │                                                      │
+      │─ gen video ─────────► flow-video-cli --frame         │
       │─ update video_url ─►                                 │
       │  state = done                                        │
       │                    │◄── poll done ──┤◄── watch ──────┤
@@ -163,7 +167,7 @@ Skill polls every 60-90s.
 - `state: "char_pick"` → waiting → reschedule 60-90s
 - `state: "char_picked"` → user picked → proceed to stage 4
 
-### Stage 4 — Generate 3-act video + fire
+### Stage 4a — Generate prompts + self-critique (before video fire)
 
 State has `char_index: 0..3`. The picked frame is
 `tmp/picker-jobs/<job>/char-{char_index+1}.png`.
@@ -171,7 +175,85 @@ State has `char_index: 0..3`. The picked frame is
 Generate 3 act prompts using the **video-prompts formula** (below),
 driven by arc + protagonist + setting + treatment + sound + subject.
 
-Fire:
+Then run a **self-critique** across these 5 dimensions for each prompt:
+
+1. **Character continuity** — Do same visual cues (texture, màu, distinctive
+   features) appear across all 3 acts? Any drift risk?
+2. **Narrative cohesion** — Does Act 2 pay off Act 1 setup? Does Act 3
+   resolve Act 1 tension (not 3 disconnected scenes)?
+3. **Dialogue callback** — Does Act 3 reference something Act 1 said?
+4. **Drift risks** — Non-human body parts for non-human protagonists?
+   (e.g. "hai tay dang rộng" for a cholesterol blob — drops back to a
+   human figure). POV shifts? Tone mismatches with arc?
+5. **Content safety** — Medical claims in safe territory (general
+   nutrition); no "chữa ung thư" / "thay thế thuốc" / fake scarcity.
+
+Output per-act critique as a list of `{level, text}` notes where `level`
+is `ok` / `warn` / `fail`. Example:
+
+```json
+[
+  {"notes": [
+    {"level":"ok", "text":"character locked (cholesterol vàng nhờn mắt đỏ)"},
+    {"level":"ok", "text":"narrative cohesion: gắt setup liên kết Act 2"}
+  ]},
+  {"notes": [
+    {"level":"ok", "text":"payoff benefits từ Act 1 threats"},
+    {"level":"warn", "text":"dialogue hơi dài — lip-sync có thể rớt"}
+  ]},
+  {"notes": [
+    {"level":"warn", "text":"Act 3 'hai tay dang rộng' là body-người — villain không có tay → risk drift"},
+    {"level":"ok", "text":"content safety OK"}
+  ]}
+]
+```
+
+Push state → `prompts_review` with both prompts + critique:
+
+```bash
+curl -sS -X POST -H "Content-Type: application/json" \
+  -d '{
+    "job": "<job>",
+    "patch": {
+      "state": "prompts_review",
+      "video_prompts": ["<act1>","<act2>","<act3>"],
+      "video_prompts_critique": [{"notes":[…]},{"notes":[…]},{"notes":[…]}]
+    }
+  }' \
+  http://127.0.0.1:47399/api/picker-update
+```
+
+### Stage 4b — Poll waiting for review outcome
+
+Skill polls every 60-90s.
+
+- `state: "prompts_review"` → user still reviewing → reschedule
+- `state: "prompts_regen_requested"` → user hit regen → go to stage 4c
+- `state: "video_gen"` → user approved → go to stage 4d (fire video)
+
+### Stage 4c — Regen prompts (different direction)
+
+User requested regen. Skill MUST generate a **meaningfully different**
+version — not the same prompts rephrased. Strategies to vary:
+
+- **Swap dialogue hook style** — if Act 1 was "Formal intro" ("tao là X
+  đây"), try "Casual confrontation" ("ê bọn mày") or "Historical pride"
+- **Switch narrative focus** — same character + arc but different
+  benefits/facts highlighted; different practical instructions in Act 3
+- **Adjust dialogue rhythm** — longer/shorter sentences, different
+  emotional peaks
+- **Fresh metaphors** — new visual proofs in Act 2
+
+Keep the same: arc, character, setting, treatment, sound, subject. Only
+the creative execution changes.
+
+Increment `regen_count`. Push state back → `prompts_review`. No cap —
+user approves when they're ready.
+
+### Stage 4d — Fire video
+
+Read the FINAL `video_prompts` from state (user may have edited them
+inline). Fire:
 ```bash
 flow-video-cli generate "<act1>" "<act2>" "<act3>" \
   --frame /Users/cuongnguyen/projects/flow-daemon/tmp/picker-jobs/<job>/char-N.png \

@@ -171,16 +171,66 @@ app.post('/api/picker-submit-char', (req, res) => {
   }
 });
 
-// POST /api/picker-update  { job, patch: { state?, characters?, video_url?, video_progress?, error? } }
+// POST /api/picker-submit-prompts  { job, prompts: [act1, act2, act3] }
+// User approves (possibly-edited) prompts. Server stores final prompts +
+// advances state to `video_gen` so the skill picks up + fires flow-video-cli.
+app.post('/api/picker-submit-prompts', (req, res) => {
+  try {
+    const { job, prompts } = req.body || {};
+    if (!Array.isArray(prompts) || prompts.length !== 3) {
+      return res.status(400).json({ error: 'prompts must be array of 3 strings' });
+    }
+    if (!prompts.every((p) => typeof p === 'string' && p.trim().length > 0)) {
+      return res.status(400).json({ error: 'each prompt must be non-empty string' });
+    }
+    const data = readJob(job);
+    if (!data) return res.status(404).json({ error: 'unknown job' });
+    if (data.state !== 'prompts_review') {
+      return res.status(409).json({ error: `cannot submit prompts in state ${data.state}` });
+    }
+    data.video_prompts = prompts;
+    data.state = 'video_gen';
+    data.updated_at = new Date().toISOString();
+    writeJob(job, data);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// POST /api/picker-request-regen  { job }
+// User wants AI to generate a DIFFERENT angle. State moves to a
+// short-lived `prompts_regen_requested` so the skill's polling loop
+// sees it + re-generates. Skill writes back to `prompts_review` with
+// new prompts + incremented regen_count.
+app.post('/api/picker-request-regen', (req, res) => {
+  try {
+    const { job } = req.body || {};
+    const data = readJob(job);
+    if (!data) return res.status(404).json({ error: 'unknown job' });
+    if (data.state !== 'prompts_review') {
+      return res.status(409).json({ error: `cannot request regen in state ${data.state}` });
+    }
+    data.state = 'prompts_regen_requested';
+    data.updated_at = new Date().toISOString();
+    writeJob(job, data);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// POST /api/picker-update  { job, patch: { state?, characters?, video_url?, video_progress?, error?, video_prompts?, video_prompts_critique?, regen_count? } }
 // Used BY THE SKILL to update state after each async step (character gen,
-// video render). No auth — local dev only.
+// prompt gen, video render). No auth — local dev only.
 app.post('/api/picker-update', (req, res) => {
   try {
     const { job, patch } = req.body || {};
     if (!job || !patch || typeof patch !== 'object') return res.status(400).json({ error: 'job + patch required' });
     const data = readJob(job);
     if (!data) return res.status(404).json({ error: 'unknown job' });
-    const ALLOWED = ['state', 'characters', 'video_url', 'video_progress', 'error'];
+    const ALLOWED = ['state', 'characters', 'video_url', 'video_progress', 'error',
+                     'video_prompts', 'video_prompts_critique', 'regen_count'];
     for (const k of ALLOWED) if (k in patch) data[k] = patch[k];
     data.updated_at = new Date().toISOString();
     writeJob(job, data);

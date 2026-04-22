@@ -194,9 +194,98 @@
     border-radius: 12px;
     overflow: hidden;
     background: #000;
-    margin: 4px 0 16px;
+    margin: 4px 0 8px;
   }
   .video-wrap video { width: 100%; display: block; }
+
+  .done-actions { margin: 0 0 12px; }
+  .submit-btn-secondary {
+    display: block;
+    width: 100%;
+    padding: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--accent);
+    background: var(--accent-dim);
+    border: 1px solid var(--accent);
+    border-radius: 10px;
+    text-align: center;
+    text-decoration: none;
+    cursor: pointer;
+    transition: opacity 0.12s, transform 0.12s;
+  }
+  .submit-btn-secondary:active { transform: scale(0.98); }
+
+  .review-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 14px 10px;
+    margin-bottom: 12px;
+  }
+  .review-card .label {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 8px;
+  }
+  .review-card textarea {
+    width: 100%;
+    min-height: 110px;
+    background: #0a0b0e;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px;
+    color: var(--text);
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 13px;
+    line-height: 1.4;
+    resize: vertical;
+    box-sizing: border-box;
+  }
+  .review-card textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  .critique { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+  .critique-item {
+    font-size: 12px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    line-height: 1.35;
+  }
+  .critique-item.ok { color: #86efac; background: #05220d; border-left: 3px solid #22c55e; }
+  .critique-item.warn { color: #fcd34d; background: #2a1e03; border-left: 3px solid #f59e0b; }
+  .critique-item.fail { color: #fca5a5; background: #2a0808; border-left: 3px solid #ef4444; }
+  .review-bar { display: grid; grid-template-columns: 1fr 2fr; gap: 8px; }
+
+  .prompts-wrap { margin: 12px 0 20px; }
+  .prompts-wrap h2 { margin-top: 20px; }
+  .prompt-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin-bottom: 10px;
+  }
+  .prompt-card .label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 6px;
+  }
+  .prompt-card .text {
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--text);
+    font-family: ui-monospace, Menlo, monospace;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
 
   .hidden { display: none !important; }
 
@@ -266,6 +355,28 @@
   </div>
 </section>
 
+<!-- ═══ STAGE 3.5: PROMPTS REVIEW (between char-pick and video-gen) ═══ -->
+<section id="stagePromptsReview" class="hidden">
+  <div id="summaryReview" class="summary"></div>
+  <h2>📜 Kịch bản — Review trước khi render
+    <span class="hint" id="regenCountHint"></span></h2>
+  <div id="promptsReviewList"></div>
+  <div class="submit-bar review-bar">
+    <button id="btnRegen" class="submit-btn-secondary">🔄 Tạo lại kịch bản</button>
+    <button id="btnApproveVideo" class="submit-btn">▶ OK render video</button>
+  </div>
+</section>
+
+<!-- ═══ STAGE 3.75: PROMPTS REGEN WAIT ═══ -->
+<section id="stagePromptsRegen" class="hidden">
+  <div id="summaryRegen" class="summary"></div>
+  <div class="loader">
+    <div class="spinner"></div>
+    <div class="status">Đang tạo kịch bản mới…</div>
+    <div class="detail">~30 giây. AI đang viết lại theo hướng khác.</div>
+  </div>
+</section>
+
 <!-- ═══ STAGE 4: VIDEO GEN WAIT ═══ -->
 <section id="stageVideoGen" class="hidden">
   <div id="summaryVideo" class="summary"></div>
@@ -274,6 +385,7 @@
     <div class="status">Đang render video…</div>
     <div class="detail" id="videoGenDetail">Mất khoảng 10 phút. Trang sẽ tự reload khi xong.</div>
   </div>
+  <div class="prompts-wrap" id="promptsDuringGen"></div>
 </section>
 
 <!-- ═══ STAGE 5: VIDEO DONE ═══ -->
@@ -281,7 +393,11 @@
   <div class="video-wrap">
     <video id="videoPlayer" controls autoplay playsinline></video>
   </div>
+  <div class="done-actions">
+    <a id="btnDownload" class="submit-btn-secondary" download>⬇︎ Tải video</a>
+  </div>
   <div id="summaryDone" class="summary"></div>
+  <div class="prompts-wrap" id="promptsDone"></div>
   <div class="submit-bar">
     <button id="btnNew" class="submit-btn">Làm video mới ↻</button>
   </div>
@@ -416,11 +532,63 @@ function renderSummary(elId, grid) {
   }
 }
 
+// Per-arc act labels. When video_prompts are rendered, each card is
+// labeled according to the arc the user picked so the audience knows
+// which beat is which (gắt vs hoài niệm vs yếu đuối vs Day 1 etc).
+const ARC_ACT_LABELS = {
+  'arc-gat-khoe-thathu':     ['Cảnh 1 — Gắt',        'Cảnh 2 — Khoe',          'Cảnh 3 — Tha thứ'],
+  'arc-yeu-sieu-swagger':    ['Cảnh 1 — Yếu đuối',   'Cảnh 2 — Siêu năng lực', 'Cảnh 3 — Swagger'],
+  'arc-bian-reveal':         ['Cảnh 1 — Bí ẩn',      'Cảnh 2 — Tiết lộ',       'Cảnh 3 — Celebrate'],
+  'arc-before-after-after':  ['Cảnh 1 — Ngày 1',     'Cảnh 2 — Ngày 30',       'Cảnh 3 — Ngày 365'],
+};
+
+function renderPrompts(elId, prompts, arcId) {
+  const el = document.getElementById(elId);
+  if (!prompts || !prompts.length) { el.innerHTML = ''; return; }
+  const labels = ARC_ACT_LABELS[arcId] || ['Cảnh 1', 'Cảnh 2', 'Cảnh 3'];
+  const header = '<h2>📜 Kịch bản đang dùng</h2>';
+  const cards = prompts.slice(0, 3).map((p, i) => `
+    <div class="prompt-card">
+      <div class="label">${labels[i] || ('Cảnh ' + (i + 1))}</div>
+      <div class="text">${p}</div>
+    </div>
+  `).join('');
+  el.innerHTML = header + cards;
+}
+
+// Render the prompts-review stage: 3 editable cards with per-prompt
+// critique badges. Textareas are seeded from server state so user edits
+// persist across polls (ONLY until first render — after that, live typing
+// wins until regen or approve).
+let reviewCardsRendered = false;
+function renderReviewCards(prompts, critique, arcId) {
+  const container = document.getElementById('promptsReviewList');
+  if (reviewCardsRendered) return;   // keep live edits, don't re-render on poll
+  reviewCardsRendered = true;
+  const labels = ARC_ACT_LABELS[arcId] || ['Cảnh 1', 'Cảnh 2', 'Cảnh 3'];
+  container.innerHTML = '';
+  (prompts || []).slice(0, 3).forEach((text, i) => {
+    const critiqueForAct = (critique || [])[i] || { notes: [] };
+    const notesHtml = (critiqueForAct.notes || []).map((n) => {
+      const level = (n.level || 'ok').toLowerCase();
+      const icon = level === 'warn' ? '⚠' : level === 'fail' ? '✗' : '✓';
+      return `<div class="critique-item ${level}">${icon} ${n.text}</div>`;
+    }).join('');
+    const card = document.createElement('div');
+    card.className = 'review-card';
+    card.innerHTML = `
+      <div class="label">${labels[i] || ('Cảnh ' + (i + 1))}</div>
+      <textarea data-idx="${i}">${text}</textarea>
+      ${notesHtml ? `<div class="critique">${notesHtml}</div>` : ''}`;
+    container.appendChild(card);
+  });
+}
+
 // ───────────────────────────────────────────────────────────────────────
 // Stage transitions. The server's `state` field drives this; client just
 // renders whichever stage matches.
 // ───────────────────────────────────────────────────────────────────────
-const stages = ['Grid', 'CharGen', 'CharPick', 'VideoGen', 'Done'];
+const stages = ['Grid', 'CharGen', 'CharPick', 'PromptsReview', 'PromptsRegen', 'VideoGen', 'Done'];
 function showStage(name) {
   if (currentStage === name) return;
   currentStage = name;
@@ -493,6 +661,55 @@ document.getElementById('btnNew').addEventListener('click', () => {
   location.href = '/';
 });
 
+// Approve prompts → submit final (possibly-edited) prompts + advance to video_gen.
+document.getElementById('btnApproveVideo').addEventListener('click', async () => {
+  const btn = document.getElementById('btnApproveVideo');
+  btn.disabled = true;
+  btn.textContent = 'Đang gửi…';
+  const prompts = Array.from(document.querySelectorAll('#promptsReviewList textarea'))
+    .map((t) => t.value.trim())
+    .filter((v) => v.length > 0);
+  if (prompts.length !== 3) {
+    showError('Cần đúng 3 prompt');
+    btn.disabled = false;
+    btn.textContent = '▶ OK render video';
+    return;
+  }
+  try {
+    const res = await fetch('/api/picker-submit-prompts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ job: jobId, prompts }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+  } catch (e) {
+    showError(e.message);
+    btn.disabled = false;
+    btn.textContent = '▶ OK render video';
+  }
+});
+
+// Regen prompts → ask skill to rewrite in a different direction.
+document.getElementById('btnRegen').addEventListener('click', async () => {
+  const btn = document.getElementById('btnRegen');
+  btn.disabled = true;
+  btn.textContent = 'Đang yêu cầu…';
+  try {
+    const res = await fetch('/api/picker-request-regen', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ job: jobId }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+    // Reset the render-once flag so next poll renders fresh prompts.
+    reviewCardsRendered = false;
+  } catch (e) {
+    showError(e.message);
+    btn.disabled = false;
+    btn.textContent = '🔄 Tạo lại kịch bản';
+  }
+});
+
 // ───────────────────────────────────────────────────────────────────────
 // Poll server state every POLL_INTERVAL_MS. Drive stage transitions +
 // populate character grid + video URL when they become available.
@@ -532,17 +749,58 @@ async function poll() {
         showStage('CharPick');
         break;
       case 'char_picked':
+        // Transient state: skill is generating prompts (~15s). Show char_pick
+        // loader flavor so user has feedback.
+        renderSummary('summaryCharPick', job.grid || {});
+        showStage('CharPick');
+        break;
+      case 'prompts_review':
+        renderSummary('summaryReview', job.grid || {});
+        {
+          const n = job.regen_count || 0;
+          document.getElementById('regenCountHint').textContent =
+            n > 0 ? `(lần regen #${n})` : '';
+        }
+        renderReviewCards(job.video_prompts, job.video_prompts_critique, (job.grid || {}).arc);
+        // Re-enable buttons in case poll arrived after a pending click.
+        document.getElementById('btnApproveVideo').disabled = false;
+        document.getElementById('btnApproveVideo').textContent = '▶ OK render video';
+        document.getElementById('btnRegen').disabled = false;
+        document.getElementById('btnRegen').textContent = '🔄 Tạo lại kịch bản';
+        showStage('PromptsReview');
+        break;
+      case 'prompts_regen_requested':
+        renderSummary('summaryRegen', job.grid || {});
+        showStage('PromptsRegen');
+        break;
       case 'video_gen':
         renderSummary('summaryVideo', job.grid || {});
+        renderPrompts('promptsDuringGen', job.video_prompts, (job.grid || {}).arc);
         document.getElementById('videoGenDetail').textContent =
           job.video_progress || 'Mất khoảng 10 phút. Trang sẽ tự reload khi xong.';
         showStage('VideoGen');
         break;
-      case 'done':
+      case 'done': {
         renderSummary('summaryDone', job.grid || {});
-        document.getElementById('videoPlayer').src = job.video_url;
+        renderPrompts('promptsDone', job.video_prompts, (job.grid || {}).arc);
+        // Only set src ONCE — otherwise every 5s poll resets playback.
+        const player = document.getElementById('videoPlayer');
+        const expectedSrc = job.video_url;
+        if (!player.src.endsWith(expectedSrc)) {
+          player.src = expectedSrc;
+        }
+        // Surface download button.
+        const dl = document.getElementById('btnDownload');
+        if (dl) {
+          dl.href = expectedSrc;
+          dl.download = `video-${jobId}.mp4`;
+        }
         showStage('Done');
+        // Stop polling — job is terminal. Saves bandwidth + prevents
+        // spurious state refreshes that reload the video.
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
         break;
+      }
       default:
         showError(`Unknown state: ${job.state}`);
     }
@@ -551,12 +809,16 @@ async function poll() {
   }
 }
 
+// Named poll timer so the done-state handler can clearInterval on
+// terminal state (prevents repeated video.src resets).
+let pollTimer = null;
+
 // Boot.
 (async () => {
   await resolveJobId();
   await loadManifest();
   await poll();
-  setInterval(poll, POLL_INTERVAL_MS);
+  pollTimer = setInterval(poll, POLL_INTERVAL_MS);
 })();
 </script>
 </body>
