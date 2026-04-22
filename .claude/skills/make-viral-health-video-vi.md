@@ -350,6 +350,50 @@ stochastically — a fresh run gives a different Veo seed.
 Both modes keep iteration history (`final-v1.mp4`, `final-v2.mp4`, …)
 and allow unlimited loops.
 
+## Bodybuilder-3D treatment (active-treatment format)
+
+**Source:** user reference from Khỏe Đẹp 365N channel — a muscular-3D
+lemon aggressively squeezing another lemon onto actual skin texture
+(da gáy). The format shows **food character physically acting on a
+body surface with visible result in same scene**.
+
+**Treatment ref:** `treatment-bodybuilder-3d` — food rendered as
+photorealistic 3D muscular bodybuilder, wet/glossy surface, dramatic
+warm lighting, mid-action pose.
+
+**Best pairings:**
+- Protagonist: `food-hero` (not villain)
+- Arc: `yeu-sieu-swagger` (power reveal) or `before-after-after`
+  (action → result per scene)
+- Setting: the three `setting-da-*` close-ups (gáy, mặt, tay-chân)
+- Subject types: strongman foods — chanh, gừng, tỏi, ớt, nghệ
+
+**Caveats:**
+- Clashes with K-drama-romance / soft lighting — don't combine.
+- Content filter occasionally rejects aggressive bodybuilder language.
+  Use `"biểu cảm tự tin đầy năng lượng"` not `"mặt mày dữ tợn hét lớn"`.
+- Close-up body-part settings need softening too: use
+  `"bề mặt da vùng X dùng làm minh hoạ commercial beauty"`, not
+  `"extreme close-up da người thật"` (filter trigger).
+
+## 3-action showcase format (ARC VARIANT — out of v1 scope)
+
+User-surfaced pattern: each of the 3 Veo clips shows a DIFFERENT
+action + body part + benefit. E.g.:
+- Clip 1: chanh chà gáy → giảm thâm gáy
+- Clip 2: chanh chấm nách → khử mùi
+- Clip 3: chanh xát khuỷu → mềm da
+
+This requires **3 different starting frames** (one per clip) since
+body parts differ. Current `flow-video-cli --frame` only accepts ONE
+frame for clip 0; extends inherit the scene. To support 3-action
+showcase properly, either:
+- Extend `flow-video-cli` with `--frames f1,f2,f3`, OR
+- Fire 3 independent 1-clip jobs + ffmpeg concat client-side.
+
+Not implemented in v1. For now, use single-body-part focus (all 3 clips
+on same body part with 3 different benefits/angles).
+
 ## Non-human protagonist drift protocol (CRITICAL)
 
 When protagonist = villain / organ / condition / ghost (anything without

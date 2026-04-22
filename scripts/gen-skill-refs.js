@@ -91,6 +91,24 @@ const REFS = [
     label: 'Miền Tây sông nước',
     prompt: `Cận cảnh vài quả chanh tươi vàng xanh đặt trong lòng thuyền gỗ nổi trên mặt nước đồng bằng sông Cửu Long, lá dừa nước xanh bao quanh, bèo tây nổi trên mặt nước, background là cảnh miền Tây với hàng dừa xa xa, ánh sáng hoàng hôn vàng cam, phong cách nature documentary chân thực, chi tiết cao, không hoạt hình`,
   },
+  {
+    id: 'setting-da-gay',
+    category: 'setting',
+    label: 'Da gáy (beauty close-up)',
+    prompt: `Close-up bề mặt da vùng vai và gáy dùng làm minh hoạ commercial beauty, texture da mịn với lỗ chân lông nhỏ, một quả chanh vàng tươi đặt trên bề mặt da làm chủ thể, ánh sáng warm side light, phong cách macro product photography beauty skincare, chi tiết cao, không hoạt hình`,
+  },
+  {
+    id: 'setting-da-mat',
+    category: 'setting',
+    label: 'Da mặt (beauty close-up)',
+    prompt: `Close-up bề mặt da vùng má dùng làm minh hoạ commercial beauty, texture da mịn với lỗ chân lông nhỏ, một quả chanh vàng tươi đặt trên bề mặt da làm chủ thể, ánh sáng warm side light, phong cách macro product photography beauty skincare, chi tiết cao, không hoạt hình`,
+  },
+  {
+    id: 'setting-da-tay-chan',
+    category: 'setting',
+    label: 'Da tay/chân (beauty close-up)',
+    prompt: `Close-up bề mặt da vùng khuỷu tay hoặc đầu gối dùng làm minh hoạ commercial beauty, texture da hơi khô có chút vệt sẫm tự nhiên, một quả chanh vàng tươi đặt trên bề mặt da làm chủ thể, ánh sáng warm side light, phong cách macro product photography beauty skincare, chi tiết cao, không hoạt hình`,
+  },
 
   // ── Treatment (10) ──────────────────────────────────────────────────
   {
@@ -152,6 +170,12 @@ const REFS = [
     category: 'treatment',
     label: 'Cinematic anh hùng',
     prompt: `Cận cảnh quả chanh tươi vàng xanh đặt đứng trên bệ đá, góc máy low angle nhìn lên, ánh sáng rim light backlight mạnh tỏa hào quang quanh quả chanh, tia sáng lens flare vàng ấm, khói mờ bay dưới chân, background mờ tối, phong cách epic cinematic hero shot blockbuster movie, chi tiết cao, dramatic mood`,
+  },
+  {
+    id: 'treatment-bodybuilder-3d',
+    category: 'treatment',
+    label: 'Bodybuilder 3D',
+    prompt: `Quả chanh 3D photorealistic được nhân cách hoá với thân hình cơ bắp khoẻ mạnh như vận động viên thể hình, bắp tay và bắp chân rõ, cơ bụng đẹp, mặt biểu cảm tự tin đầy năng lượng, đang trong tư thế cầm ép một nửa quả chanh khác cắt đôi lộ thịt mọng, giọt nước chanh tươi bắn nhẹ, thân chanh bóng ướt, background trơn tông nâu ấm, ánh sáng warm rim light dramatic, phong cách 3D render photorealistic muscular food character commercial, chi tiết cao, không hoạt hình phẳng`,
   },
 
   // ── Protagonist (4) ─────────────────────────────────────────────────
