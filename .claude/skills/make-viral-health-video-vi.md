@@ -278,29 +278,41 @@ curl -sS -X POST -H "Content-Type: application/json" \
 
 Announce in chat: "Video xong! Mở lại link picker sẽ thấy player tự bật."
 
-### Stage 5 — Post-done revise loop
+### Stage 5 — Post-done revise loop (two modes)
 
-User watching the final video may want changes. The done stage exposes
-a textarea + "Render lại với góp ý" button that POSTs a free-form
-comment to `/api/picker-request-revise`. Server moves state to
-`revise_requested` with `revise_comment`, archives the current
-`final.mp4` as `final-v<n>.mp4`, and increments `video_version`.
+User watching the final video has two actions in the done stage:
 
-Skill handler for `revise_requested`:
+**🔄 Gen lại kịch bản** (`mode=regen`, requires comment)
+POST `/api/picker-request-revise` with `{comment, mode:"regen"}`.
+Server archives current `final.mp4` as `final-v<n>.mp4`, bumps
+`video_version`, moves state → `revise_requested` with `revise_comment`.
+Skill handler:
 
 1. Read `video_prompts` (last run) + `revise_comment` (user feedback).
 2. Generate REVISED prompts that **specifically address the comment**:
-   - If comment flags a drift ("Act 3 bị lệch thành người") → tighten
-     the drifting act's character-lock cues, remove human body metaphors.
-   - If comment asks for pacing ("prompt 2 quá dài") → trim dialogue.
-   - If comment asks for added content ("thêm cảnh so sánh") → work it in.
+   - Drift complaint ("Act 3 bị lệch thành người") → tighten drifting
+     act's character-lock cues, drop human-body metaphors.
+   - Pacing ("prompt 2 quá dài") → trim dialogue.
+   - Content ("thêm cảnh so sánh") → work it in.
    - Preserve everything user DIDN'T complain about.
 3. Re-run the 5-dimension self-critique.
 4. Update state → `prompts_review` with new prompts + critique + keep
    `revise_comment` visible so user sees what feedback drove the change.
 
-Subsequent flow is identical to stage 4b onwards: user reviews, approves
-or regens, video renders, new done. Iteration is unlimited.
+Subsequent flow identical to stage 4b onwards.
+
+**⏩ Render lại video** (`mode=rerender`, no comment needed)
+POST `/api/picker-request-revise` with `{mode:"rerender"}`. Server
+archives current `final.mp4`, bumps `video_version`, moves state
+DIRECTLY to `video_gen` (skipping review — prompts unchanged).
+Skill handler for `video_gen` that was entered from this path (detect
+via archived file existing + same `video_prompts` as previous run):
+just re-fire `flow-video-cli` with the existing prompts + same frame.
+Useful when user liked the script but Veo's output drifted
+stochastically — a fresh run gives a different Veo seed.
+
+Both modes keep iteration history (`final-v1.mp4`, `final-v2.mp4`, …)
+and allow unlimited loops.
 
 ## Character-variants formula (4 angles)
 

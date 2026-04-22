@@ -198,37 +198,51 @@ app.post('/api/picker-submit-prompts', (req, res) => {
   }
 });
 
-// POST /api/picker-request-revise  { job, comment }
-// After a video is done, user can request a script revision with a
-// free-form comment (e.g., "Act 3 bị lệch thành người"). Server moves
-// state to `revise_requested` with the comment so the skill can
-// regenerate prompts incorporating the feedback. Old final.mp4 is
-// preserved as final-v<n>.mp4 before the next render.
+// Shared helper: archive the current final.mp4 + bump video_version
+// so the next render writes a fresh file the picker will cache-bust.
+function archiveFinalAndBumpVersion(data, dir) {
+  const current = path.join(dir, 'final.mp4');
+  if (fs.existsSync(current)) {
+    const version = data.video_version || 1;
+    const archived = path.join(dir, `final-v${version}.mp4`);
+    try { fs.renameSync(current, archived); } catch {}
+    data.video_version = version + 1;
+  } else {
+    data.video_version = (data.video_version || 1) + 1;
+  }
+}
+
+// POST /api/picker-request-revise  { job, comment, mode? }
+// Two modes from the done stage:
+//   mode="regen" (default) — skill rewrites prompts incorporating the
+//     user's comment, loops back through prompts_review. Comment required.
+//   mode="rerender" — keep existing prompts, just fire video again
+//     (different Veo seed → different output). Comment ignored.
 app.post('/api/picker-request-revise', (req, res) => {
   try {
-    const { job, comment } = req.body || {};
-    if (typeof comment !== 'string' || comment.trim().length === 0) {
-      return res.status(400).json({ error: 'comment required' });
+    const { job, comment, mode } = req.body || {};
+    const action = mode === 'rerender' ? 'rerender' : 'regen';
+    if (action === 'regen' && (typeof comment !== 'string' || comment.trim().length === 0)) {
+      return res.status(400).json({ error: 'comment required for regen mode' });
     }
     const data = readJob(job);
     if (!data) return res.status(404).json({ error: 'unknown job' });
     if (data.state !== 'done') {
       return res.status(409).json({ error: `cannot revise in state ${data.state}` });
     }
-    // Archive the current final.mp4 so iteration history is preserved.
     const dir = jobDir(job);
-    const current = path.join(dir, 'final.mp4');
-    if (fs.existsSync(current)) {
-      const version = (data.video_version || 1);
-      const archived = path.join(dir, `final-v${version}.mp4`);
-      try { fs.renameSync(current, archived); } catch {}
-      data.video_version = version + 1;
+    archiveFinalAndBumpVersion(data, dir);
+    if (action === 'regen') {
+      data.state = 'revise_requested';
+      data.revise_comment = comment.trim();
+    } else {
+      // rerender — skip script review, skill fires directly on existing video_prompts.
+      data.state = 'video_gen';
+      if (typeof comment === 'string' && comment.trim()) data.revise_comment = comment.trim();
     }
-    data.state = 'revise_requested';
-    data.revise_comment = comment.trim();
     data.updated_at = new Date().toISOString();
     writeJob(job, data);
-    res.json({ ok: true });
+    res.json({ ok: true, action });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }

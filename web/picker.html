@@ -302,6 +302,11 @@
     outline: none;
     border-color: var(--accent);
   }
+  .revise-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
 
   .prompts-wrap { margin: 12px 0 20px; }
   .prompts-wrap h2 { margin-top: 20px; }
@@ -441,12 +446,17 @@
   <div id="summaryDone" class="summary"></div>
   <div class="prompts-wrap" id="promptsDone"></div>
 
-  <!-- Revise: user feedback → AI rewrites prompts → back to review → re-render. -->
+  <!-- Revise: two actions from the done stage.
+       - 🔄 Gen lại kịch bản: AI rewrites prompts per comment → prompts_review
+       - ⏩ Render lại video: keep same prompts, different Veo output seed -->
   <div class="revise-section">
-    <h2>✏️ Chỉnh sửa kịch bản</h2>
-    <p class="revise-hint">Góp ý cụ thể (vd: "Act 3 bị lệch thành người", "prompt 2 quá dài", "thêm cảnh so sánh với người không ăn").</p>
-    <textarea id="reviseComment" placeholder="Nhập góp ý..."></textarea>
-    <button id="btnRevise" class="submit-btn-secondary" disabled>🔄 Render lại với góp ý</button>
+    <h2>✏️ Chỉnh sửa / Render lại</h2>
+    <p class="revise-hint">Góp ý cho AI viết lại kịch bản (vd: "Act 3 bị lệch thành người", "prompt 2 quá dài"). Hoặc render lại luôn để thử output khác từ Veo.</p>
+    <textarea id="reviseComment" placeholder="Góp ý cho 'Gen lại kịch bản'..."></textarea>
+    <div class="revise-actions">
+      <button id="btnReviseRegen" class="submit-btn-secondary" disabled>🔄 Gen lại kịch bản</button>
+      <button id="btnReviseRerender" class="submit-btn-secondary">⏩ Render lại video</button>
+    </div>
   </div>
 
   <div class="submit-bar">
@@ -750,35 +760,43 @@ document.getElementById('btnApproveVideo').addEventListener('click', async () =>
   }
 });
 
-// Enable Revise button only when comment has content.
+// Regen button needs a comment; rerender doesn't.
 document.getElementById('reviseComment').addEventListener('input', (ev) => {
-  document.getElementById('btnRevise').disabled = ev.target.value.trim().length === 0;
+  document.getElementById('btnReviseRegen').disabled = ev.target.value.trim().length === 0;
 });
 
-// Revise → user feedback gets sent to skill, which rewrites prompts
-// incorporating the comment + loops back to review.
-document.getElementById('btnRevise').addEventListener('click', async () => {
-  const btn = document.getElementById('btnRevise');
+// Shared revise trigger — `mode` is 'regen' (needs comment, loops through review)
+// or 'rerender' (keeps prompts, different Veo seed).
+async function requestRevise(mode) {
   const comment = document.getElementById('reviseComment').value.trim();
-  if (!comment) return;
-  btn.disabled = true;
-  btn.textContent = 'Đang gửi góp ý…';
+  const regenBtn = document.getElementById('btnReviseRegen');
+  const rerenderBtn = document.getElementById('btnReviseRerender');
+  // Disable BOTH while request is in flight so user doesn't double-fire.
+  regenBtn.disabled = true;
+  rerenderBtn.disabled = true;
+  const clickedBtn = mode === 'regen' ? regenBtn : rerenderBtn;
+  const originalLabel = clickedBtn.textContent;
+  clickedBtn.textContent = 'Đang gửi…';
   try {
     const res = await fetch('/api/picker-request-revise', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ job: jobId, comment }),
+      body: JSON.stringify({ job: jobId, comment, mode }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
-    // Resume polling — we stopped at done, so re-arm now that state will change.
+    // Resume polling so the stage transition picks up automatically.
     if (!pollTimer) pollTimer = setInterval(poll, POLL_INTERVAL_MS);
-    reviewCardsRendered = false; // clear so new prompts render fresh on review
+    reviewCardsRendered = false;
   } catch (e) {
     showError(e.message);
-    btn.disabled = false;
-    btn.textContent = '🔄 Render lại với góp ý';
+    clickedBtn.textContent = originalLabel;
+    regenBtn.disabled = comment.length === 0;
+    rerenderBtn.disabled = false;
   }
-});
+}
+
+document.getElementById('btnReviseRegen').addEventListener('click', () => requestRevise('regen'));
+document.getElementById('btnReviseRerender').addEventListener('click', () => requestRevise('rerender'));
 
 // Regen prompts → ask skill to rewrite in a different direction.
 document.getElementById('btnRegen').addEventListener('click', async () => {
@@ -890,8 +908,12 @@ async function poll() {
         }
         // Reset revise UI in case user already typed then came back.
         document.getElementById('reviseComment').value = '';
-        document.getElementById('btnRevise').disabled = true;
-        document.getElementById('btnRevise').textContent = '🔄 Render lại với góp ý';
+        const regenBtn = document.getElementById('btnReviseRegen');
+        regenBtn.disabled = true;
+        regenBtn.textContent = '🔄 Gen lại kịch bản';
+        const rerenderBtn = document.getElementById('btnReviseRerender');
+        rerenderBtn.disabled = false;
+        rerenderBtn.textContent = '⏩ Render lại video';
         showStage('Done');
         // Stop polling — job is terminal. Revise button will re-arm.
         if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
