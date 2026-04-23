@@ -351,25 +351,34 @@ flow-video-cli generate "<act1>" "<act2>" "<act3>" \
 Use `run_in_background: true`. ~10-12 min. Check wakeup at 330s, then
 every 240s if still running.
 
-When render done, **brand the video** (overlay channel logo to cover Veo
-watermark) BEFORE marking state=done. The gallery endpoint prefers
-`final-branded.mp4` over `final.mp4`:
+When render done, **finalize the video** (delogo Veo watermark +
+append channel outro) BEFORE marking state=done. Single ffmpeg command
+does both — filter_complex delogos the main clip then concats outro:
 
 ```bash
 ffmpeg -y \
   -i /Users/cuongnguyen/projects/flow-daemon/tmp/picker-jobs/<job>/final.mp4 \
-  -i /Users/cuongnguyen/projects/flow-daemon/assets/logo-v1.png \
-  -filter_complex "[1:v]scale=380:380[lg];[0:v][lg]overlay=W-w-20:H-h-20" \
-  -c:v libx264 -c:a copy -preset fast -crf 20 \
+  -i /Users/cuongnguyen/projects/flow-daemon/assets/outro.mp4 \
+  -filter_complex "[0:v]delogo=x=1770:y=3670:w=320:h=110:show=0[v0];[v0][0:a][1:v][1:a]concat=n=2:v=1:a=1[v][a]" \
+  -map "[v]" -map "[a]" \
+  -c:v libx264 -c:a aac -preset fast -crf 20 \
   /Users/cuongnguyen/projects/flow-daemon/tmp/picker-jobs/<job>/final-branded.mp4
 ```
 
-Logo is `assets/logo-v1.png` (circular chuối mascot + "HEALTHY LIFE"
-text ring). Scale 380 + corner margin 20 tested against 2160×3840 (4K
-9:16) — adjusts proportionally since overlay uses W-w / H-h anchoring.
+Two stages in one ffmpeg pass:
+1. **Delogo**: removes Veo watermark at bottom-right. Box coords
+   `x=1770 y=3670 w=320 h=110` calibrated for 2160×3840 (4K 9:16) —
+   valid for all flow-video-cli outputs (default resolution + aspect).
+2. **Concat outro**: appends `assets/outro.mp4` (5s chuối bodybuilder
+   doing bicep curl + "nhớ follow kênh để biết thêm nhiều kiến thức
+   hay nhá"). Outro itself is pre-delogoed. Hard cut, no crossfade.
 
-Branding is ~10s of CPU. If ffmpeg fails (e.g., logo missing), fall
-back to raw `final.mp4` and warn in chat — don't block the "done" state.
+Finalization ~20-30s CPU (re-encodes full duration). Both streams need
+matching codecs — we use `libx264 + aac` so subsequent concats align
+even if outro source format differs.
+
+If outro file missing or ffmpeg fails, fall back to raw `final.mp4` and
+warn in chat — don't block the "done" state.
 
 Then update state + point video_url at the branded file:
 ```bash
@@ -418,10 +427,10 @@ just re-fire `flow-video-cli` with the existing prompts + same frame.
 Useful when user liked the script but Veo's output drifted
 stochastically — a fresh run gives a different Veo seed.
 
-After rerender completes, **re-brand** (same ffmpeg overlay command as
-stage 4d) so `final-branded.mp4` reflects the new render. Server does
-NOT auto-archive the branded version — if user re-revises, the archive
-step handles only raw `final.mp4`.
+After rerender completes, **re-finalize** (same ffmpeg delogo + outro
+concat command as stage 4d) so `final-branded.mp4` reflects the new
+render. Server does NOT auto-archive the branded version — if user
+re-revises, the archive step handles only raw `final.mp4`.
 
 Both modes keep iteration history (`final-v1.mp4`, `final-v2.mp4`, …)
 and allow unlimited loops.
