@@ -87,7 +87,7 @@ videos) keeps the channel from feeling like one repeated meme.
 
 ### Act 3 (Tha thứ) — forgiveness closers
 
-- **Forgive + command:** `"thôi được rồi bỏ qua chuyện cũ, từ mai nhớ ăn tao nha, [instruction], [origin] ngon bổ rẻ nhớ chưa"`
+- **Forgive + command:** `"thôi được rồi bỏ qua chuyện cũ, từ mai nhớ ăn tao nha, [instruction], [origin] ngon bổ rẻ nhớ chưa"` — ⚠ tradeoff: "thôi bỏ qua" sounds scripted (user feedback gừng v2). Prefer dropping the filler and using visual tha-thứ cues (nụ cười + soft lighting + friendly posture) while the dialogue jumps straight to the instruction: `"[instruction], [origin] ngon bổ rẻ nhớ chưa"` — more natural + saves 3-4 words from the 24-word budget.
 - **Warm reassurance:** `"tao không giận đâu, chỉ muốn bọn mày biết [instruction], [origin] là ngon nhất"`
 - **Playful peace:** `"ôi bọn mày đáng yêu quá, thôi làm hoà, [instruction], nhớ là [origin] đấy"`
 - **Conditional forgive:** `"ừ thì tao tha, nhưng phải [instruction], và nhớ [origin] ngon nhất"`

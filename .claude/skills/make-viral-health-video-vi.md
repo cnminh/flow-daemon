@@ -544,6 +544,11 @@ Each clip is ~8s. Vietnamese speech rate ≈ 3 words/second. That means
   2 short quotes better than 1 long one.
 - Prior drafts that violated this rule (chuối v1, bơ v1) had 40-80 words
   per act — Veo dropped the middle clauses silently.
+- **Avoid rote filler phrases** — user feedback on gừng v2: `"thôi bỏ qua"`
+  at start of Act 3 sounded scripted and ate budget. Default Act 3 to
+  natural conversational lines ("nhớ nha" / "ờ" / direct instruction).
+  The tha thứ/forgiveness vibe is better conveyed through VISUAL (smile,
+  soft lighting, open posture) than through formulaic opener words.
 
 ### Per-arc templates
 
