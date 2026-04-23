@@ -641,6 +641,132 @@ bếp quê, cối giã trong phòng gym, máy xay trong sân đình. Creates
 juxtaposition humor + visual surprise + differentiation vs other food
 videos using identical props.
 
+### Action & physics library (pick-and-mix cheat sheet)
+
+Compiled from bơ / chuối / gừng / dưa hấu successes. Purpose: avoid
+repeating the same pose/action across back-to-back videos. Pick 1 from
+each relevant table per video.
+
+#### Physics garnishes (reusable across any act)
+
+| Effect | Vietnamese prompt cue | Best for |
+|---|---|---|
+| **Splash** | `nước bắn tung toé lên không trung thành những giọt lấp lánh` | Cắt / đập / ném vào nước |
+| **Drip** | `giọt nước chảy xuống cằm chảy xuống thân ngực cơ bắp` | Visceral eat/drink |
+| **Steam** | `hơi nước bốc lên ấm áp` | Nóng, trà, súp, ngâm |
+| **Overflow** | `tràn ra khỏi mép ly chảy xuống cằm` | Uống mạnh |
+| **Sizzle** | `xèo xèo khói lẹp bẹp` | Áp chảo, đổ dầu nóng |
+| **Sweat shine** | `mồ hôi lấp lánh trên bắp tay` | Flex / gym / heat |
+| **Burst** | `nổ tung ra bụi [hạt/phấn]` | Đập / bẻ / mở mạnh |
+| **Crack** | `vỏ nứt lộ ra bên trong` | Reveal moment |
+| **Particle fall** | `các lát / cánh hoa / vụn rơi xuống mâm tre` | Cắt / xả / đập |
+| **Shine travel** | `ánh sáng lướt qua bề mặt bóng ướt` | Glossy hero shot |
+
+#### Act 1 (gắt / chê / confrontation) — pose variants
+
+- **Tay chỉ thẳng camera** (baseline — mặc định an toàn)
+- **Nắm đấm đập bàn** + đồ vật xung quanh rung lên
+- **Bẻ gãy / đập vỡ đối thủ**: thanh protein bar, chai nước ngọt, bao bì snack
+- **Ngón cái chỉ vào ngực** "tao đây" — Vietnamese swagger
+- **Hai tay chống hông dạng chân** — intimidation stance
+- **Giật lấy sản phẩm đối thủ ném xuống đất** — theatrical dismissal
+- **Lean forward low-angle** — hero cam hướng lên, góc thấp kịch tính
+- **Vung tay quát có trail nước** (comedic nếu subject mọng nước)
+
+#### Act 2 — PRODUCT-USE school (visceral, khi subject có cách dùng cụ thể)
+
+**Eat / drink own product:**
+- Cắn to + nước tràn mép (dưa hấu, xoài, vải, cà chua)
+- Uống ực ực + nước tràn cổ (gừng, cam, nước dừa)
+- Nhai ngấu nghiến + má phồng (nho, táo, kẹo)
+- Nhấp nhấp + mắt lim dim (cà phê, mật ong, rượu nếp)
+
+**Self-process (show transformation):**
+- Vắt nước ra ly (chanh, cam, bưởi)
+- Bổ nửa reveal inside (dưa hấu, bơ, trứng, sầu riêng)
+- Peel vỏ (chuối, cam, tỏi, khoai)
+- Bẻ đôi (củ, lá, thanh snack)
+
+**Self-apply (beauty / skincare):**
+- Chà sát lên da (chanh, dưa leo, bã cà phê)
+- Đắp lên mặt (honey mask, nghệ, sữa chua)
+- Thoa nước lên cánh tay (nước gừng, tinh dầu)
+
+**Pour / serve:**
+- Rót nước ép vào ly có đá + bắn giọt
+- Đổ hạt ra chảo nóng + xèo xèo
+- Khuấy trong nồi đất + hơi bốc + muỗng gỗ
+
+#### Act 2 — METAPHOR school (abstract power, khi benefit trừu tượng)
+
+**Weightlifting:**
+- Nâng tạ dumbbell (đã dùng chuối) — gym vibe
+- Deadlift barbell một tay — superhuman
+- Push-up một tay + flex còn lại
+- Squat với tạ ngang vai
+
+**Combat:**
+- Tung cú đấm bay đối thủ (villain takedown)
+- Chém bằng kiếm / dao tre
+- Đá bay chai nước ngọt qua frame
+- Ném shuriken (hạt / miếng bay theo hướng)
+
+**Flex variants:**
+- Double biceps flex classic
+- Back flex (lat spread)
+- Chest pump + pound ngực
+- "Most muscular" pose nghiến răng
+
+**Destruction of competitor:**
+- Bẻ gãy thanh protein bar trong tay, vụn rơi
+- Đập vỡ chai nước ngọt lên đùi, bọt bắn
+- Xé bao bì snack ném xuống đất
+
+#### Act 3 — demo + CTA (MUST have motion — never static smile-only)
+
+**Traditional Vietnamese prep:**
+- Giã trong cối đá — bụi bay, tiếng "thịch thịch"
+- Pha trà rót từ ấm cao — trà chảy thành dòng vàng
+- Ngâm chân chậu nước (đã dùng gừng) — hơi bốc
+- Khuấy trong nồi đất — hơi + muỗng gỗ
+- Cắt trên thớt gỗ (đã dùng dưa hấu) — splash
+- Xào chảo + nêm gia vị — nhúm muối / hành rơi vào
+
+**Giving gesture:**
+- Rót vào ly có người đưa tay nhận (partial hand only — safety)
+- Đặt lên mâm tre + đẩy về camera
+- Vỗ nhẹ vai character khác (ensemble shot)
+
+**Transformation / reveal:**
+- Bổ / cắt lộ ra inside cinematic
+- Peel vỏ drop xuống slow-mo
+- Slice thin → layers floating mid-air
+
+**Ambient motion close:**
+- Khăn vải bay nhẹ trong gió
+- Hơi nước từ ly trà vươn lên frame
+- Lửa bếp củi flicker + ánh sáng nhảy
+
+#### Subject → action quick mapping
+
+| Subject type | Best Act 2 | Best Act 3 |
+|---|---|---|
+| **Trái cây mọng nước** (dưa hấu, cam, bưởi, xoài) | Cắn + overflow splash | Cắt + nước bắn |
+| **Củ / rễ** (gừng, tỏi, nghệ, riềng) | Giã / ép / xay + khói | Pha trà / ngâm chân |
+| **Lá** (rau ngót, tía tô, trà, lá neem) | Cho vào nồi + khuấy | Rót trà + hơi bốc |
+| **Hạt** (đậu, lạc, hạt sen, mè) | Đổ vào chảo + xào | Nêm vào bát đã nấu |
+| **Thức uống** (mật ong, sữa, nước dừa) | Rót chậm / kéo tơ | Chấm bánh + drip |
+| **Lá dày / nguyên quả** (bơ, chuối) | Bóc vỏ + reveal | Slice layer floating |
+| **Gia vị** (tiêu, muối, ớt) | Rắc xuống chảo / món | Gõ nhẹ lọ + drift xuống |
+| **Villain** (cholesterol, đường, gốc tự do) | Combat + destruction | Transformation (tan chảy / vỡ) |
+
+#### Variety rule (chống nhàm chán giữa videos)
+
+- Track the last 3 videos' Act 1 pose / Act 2 action / Act 3 demo
+- For next video, pick an action NOT used in last 3 (if subject allows)
+- If subject forces a repeat (trái mọng nước → luôn là splash), vary
+  the garnish (overflow → burst → spray → drip trail)
+
 ### Per-arc templates
 
 #### `arc-gat-khoe-thathu` — Complaint → Pride → Forgiveness
