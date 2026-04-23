@@ -348,6 +348,71 @@ app.post('/api/picker-update', (req, res) => {
   }
 });
 
+// GET /api/videos — list all jobs that have a rendered video artifact.
+// Includes in-progress-revise jobs by falling back to the latest archived
+// final-v*.mp4 when the current final.mp4 was replaced during revise.
+// Sorted by updated_at desc. Used by gallery.html.
+app.get('/api/videos', (_req, res) => {
+  try {
+    if (!fs.existsSync(JOBS_ROOT)) return res.json([]);
+    const items = [];
+    for (const id of fs.readdirSync(JOBS_ROOT)) {
+      if (!id.startsWith('job_')) continue;
+      const jobDir = path.join(JOBS_ROOT, id);
+      const statePath = path.join(jobDir, 'state.json');
+      if (!fs.existsSync(statePath)) continue;
+      let data;
+      try { data = JSON.parse(fs.readFileSync(statePath, 'utf8')); } catch { continue; }
+
+      // Resolve best video artifact with preference order:
+      //   1. final-branded.mp4 (logo-branded for publishing)
+      //   2. final.mp4 (current raw render)
+      //   3. latest final-vN.mp4 (archived version from revise workflow)
+      let videoUrl = null;
+      let resolvedVersion = null;
+      const brandedMp4 = path.join(jobDir, 'final-branded.mp4');
+      const currentMp4 = path.join(jobDir, 'final.mp4');
+      if (fs.existsSync(brandedMp4) && fs.statSync(brandedMp4).size > 0) {
+        videoUrl = `/picker-jobs/${id}/final-branded.mp4`;
+        resolvedVersion = data.video_version || 1;
+      } else if (fs.existsSync(currentMp4) && fs.statSync(currentMp4).size > 0) {
+        videoUrl = `/picker-jobs/${id}/final.mp4`;
+        resolvedVersion = data.video_version || 1;
+      } else {
+        const versioned = fs.readdirSync(jobDir)
+          .map((n) => ({ n, m: n.match(/^final-v(\d+)\.mp4$/) }))
+          .filter((x) => x.m && fs.statSync(path.join(jobDir, x.n)).size > 0)
+          .map((x) => ({ n: x.n, v: Number(x.m[1]) }))
+          .sort((a, b) => b.v - a.v);
+        if (versioned.length) {
+          videoUrl = `/picker-jobs/${id}/${versioned[0].n}`;
+          resolvedVersion = versioned[0].v;
+        }
+      }
+      if (!videoUrl) continue;
+
+      const charIdx = typeof data.char_index === 'number' ? data.char_index : 0;
+      const thumbUrl = data.characters?.[charIdx]?.url
+        || `/picker-jobs/${id}/char-${charIdx + 1}.png`;
+      items.push({
+        job_id: id,
+        subject: data.subject || '(untitled)',
+        video_url: videoUrl,
+        thumb_url: thumbUrl,
+        updated_at: data.updated_at,
+        created_at: data.created_at,
+        grid: data.grid || null,
+        video_version: resolvedVersion,
+        state: data.state
+      });
+    }
+    items.sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
+    res.json(items);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Directory listing at / — inlines images + videos so you can scroll through
 // without clicking each link. Ordered by mtime descending (genuinely
 // newest first; alphabetical sort can bury fresh files under older names).

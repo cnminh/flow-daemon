@@ -351,14 +351,34 @@ flow-video-cli generate "<act1>" "<act2>" "<act3>" \
 Use `run_in_background: true`. ~10-12 min. Check wakeup at 330s, then
 every 240s if still running.
 
-When done, copy final.mp4 to preview dir + update state:
+When render done, **brand the video** (overlay channel logo to cover Veo
+watermark) BEFORE marking state=done. The gallery endpoint prefers
+`final-branded.mp4` over `final.mp4`:
+
+```bash
+ffmpeg -y \
+  -i /Users/cuongnguyen/projects/flow-daemon/tmp/picker-jobs/<job>/final.mp4 \
+  -i /Users/cuongnguyen/projects/flow-daemon/assets/logo-v1.png \
+  -filter_complex "[1:v]scale=380:380[lg];[0:v][lg]overlay=W-w-20:H-h-20" \
+  -c:v libx264 -c:a copy -preset fast -crf 20 \
+  /Users/cuongnguyen/projects/flow-daemon/tmp/picker-jobs/<job>/final-branded.mp4
+```
+
+Logo is `assets/logo-v1.png` (circular chuối mascot + "HEALTHY LIFE"
+text ring). Scale 380 + corner margin 20 tested against 2160×3840 (4K
+9:16) — adjusts proportionally since overlay uses W-w / H-h anchoring.
+
+Branding is ~10s of CPU. If ffmpeg fails (e.g., logo missing), fall
+back to raw `final.mp4` and warn in chat — don't block the "done" state.
+
+Then update state + point video_url at the branded file:
 ```bash
 curl -sS -X POST -H "Content-Type: application/json" \
   -d '{
     "job":"<job>",
     "patch": {
       "state":"done",
-      "video_url":"/picker-jobs/<id>/final.mp4"
+      "video_url":"/picker-jobs/<id>/final-branded.mp4"
     }
   }' http://127.0.0.1:47399/api/picker-update
 ```
@@ -397,6 +417,11 @@ via archived file existing + same `video_prompts` as previous run):
 just re-fire `flow-video-cli` with the existing prompts + same frame.
 Useful when user liked the script but Veo's output drifted
 stochastically — a fresh run gives a different Veo seed.
+
+After rerender completes, **re-brand** (same ffmpeg overlay command as
+stage 4d) so `final-branded.mp4` reflects the new render. Server does
+NOT auto-archive the branded version — if user re-revises, the archive
+step handles only raw `final.mp4`.
 
 Both modes keep iteration history (`final-v1.mp4`, `final-v2.mp4`, …)
 and allow unlimited loops.
