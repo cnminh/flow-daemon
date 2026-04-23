@@ -709,13 +709,13 @@ each relevant table per video.
 
 #### Act 2 — PRODUCT-USE school (visceral, khi subject có cách dùng cụ thể)
 
-**Eat / drink own product:**
-- Cắn to + nước tràn mép (dưa hấu, xoài, vải, cà chua)
-- Uống ực ực + nước tràn cổ (gừng, cam, nước dừa)
-- Nhai ngấu nghiến + má phồng (nho, táo, kẹo)
-- Nhấp nhấp + mắt lim dim (cà phê, mật ong, rượu nếp)
+⚠️ **NEVER mix mouth action with dialogue in same clip.** Veo prioritizes
+lip-sync and drops eating/drinking motion — observed on dưa hấu + xoài
+where "cắn + nước tràn" was intended but never rendered (only dialogue
++ juice residue on chin showed). Use HAND-based actions if Act 2 has
+dialogue. Save mouth actions for silent Act 3 ambient or outro clips.
 
-**Self-process (show transformation):**
+**Self-process (hands only — SAFE with dialogue):**
 - Vắt nước ra ly (chanh, cam, bưởi)
 - Bổ nửa reveal inside (dưa hấu, bơ, trứng, sầu riêng)
 - Peel vỏ (chuối, cam, tỏi, khoai)
