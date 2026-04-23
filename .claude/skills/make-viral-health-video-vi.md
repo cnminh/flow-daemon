@@ -20,6 +20,57 @@ Subject can be:
 Do NOT use for: generic image generation, video without health angle,
 script-writing without execution (use `write-viral-food-script-vi` instead).
 
+## Viral Food Hero Formula v1 — Recommended preset (food/plant subjects)
+
+Proven pattern from successful chuối + gừng videos. Applies when subject
+is a food/plant (trái cây, rau củ, gia vị, lá thuốc).
+
+**NOT auto-selected.** The skill still presents the grid menu per the
+"offer menu over autopick" rule. But when pitching options in chat or
+annotating the picker's default picks, flag this combo as
+**"recommended preset — pattern proven từ chuối/gừng"** so the user
+knows it's battle-tested.
+
+### Grid picks (recommended)
+
+| Axis | Value | Why |
+|---|---|---|
+| Setting | `setting-bep-que` | bếp củi + nồi đất + mái lá = cultural warmth, trust |
+| Treatment | `treatment-bodybuilder-3d` | cơ bắp + bóng ướt = healthy vibe trực quan |
+| Protagonist | `protagonist-food-hero` | food là POV, không narrator ngoài |
+| Arc | `arc-gat-khoe-thathu` | hook (Act 1 gắt) + payoff (Act 2 khoe) + CTA (Act 3) |
+| Sound | `dialogue` | POV + Vietnamese lip-sync = high retention |
+| Char index | `0` (classic portrait) | Act 1 expression lock, best video seed |
+
+### Script structure (proven)
+
+- **Act 1 — Gắt chê đối thủ**: "ê bọn mày toàn ăn [COMPETITOR_IMPORTED],
+  quên tao à, tao là [SUBJECT] Việt, [FACT_1] [FACT_2] [FACT_3] đủ cả".
+  Định vị nguyên liệu Việt vs đối thủ ngoại (thanh protein / thuốc bổ /
+  supplement ngoại).
+- **Act 2 — Khoe với visible mechanism**: 3 benefits cụ thể + động tác
+  muscle/flex có mechanism thấy được (trái tim đập, cơ bắp săn, nâng tạ,
+  kết tủa vỡ). Mỗi benefit 1 câu ngắn. Mechanism visible > advisory claim.
+- **Act 3 — Tha thứ + CTA cụ thể**: tha thứ vibe qua VISUAL (smile +
+  product trên mâm/đĩa), CTA phải cụ thể ("sáng 1 quả sau cà phê, tối
+  nửa quả, khoẻ ngay nha"). KHÔNG dùng filler "thôi bỏ qua".
+
+### Callback 3-facts rule
+
+- Act 1 nêu 3 chất dinh dưỡng (vd kali / magie / tryptophan cho chuối).
+- Act 2 map 1-1 sang 3 symptom relief (chuột rút / tim / ngủ).
+- Tạo cảm giác "có khoa học" — không mơ hồ, không lộ thông tin vô căn cứ.
+
+### When to deviate from the preset
+
+- **Subject là villain/organ/condition** (cholesterol, gan, stress):
+  dùng `villain-takedown` hoặc `condition-ghost` arc thay vì
+  gắt-khoe-thathu. Non-human drift protocol áp dụng (xem section dưới).
+- **Subject cần body-contact demo** (chanh chà gáy, tỏi đắp vết): dùng
+  3-action showcase format (out of v1 scope).
+- **User yêu cầu tone trầm/bình yên**: bodybuilder-3D clashes với soft
+  moods — chuyển sang `treatment-macro-asmr`.
+
 ## Architecture
 
 This skill is the **orchestrator**. The `picker.html` web UI is the user
@@ -549,6 +600,46 @@ Each clip is ~8s. Vietnamese speech rate ≈ 3 words/second. That means
   natural conversational lines ("nhớ nha" / "ờ" / direct instruction).
   The tha thứ/forgiveness vibe is better conveyed through VISUAL (smile,
   soft lighting, open posture) than through formulaic opener words.
+
+### Visual mechanism rules (CRITICAL — learned from chuối/gừng compare)
+
+**Every act needs a visible mechanism.** Act 3 is the common failure mode:
+it drifts to "smile + product showcase" static frame, losing retention at
+the CTA moment. Each of the 3 acts must have ONE concrete physical action
+visible:
+
+- Act 1: pointing / gesturing / confrontation pose
+- Act 2: product-use action (self-consume, flex, demo) — see two schools below
+- Act 3: demo action (ngâm, đắp, pha, rót, bắn, bốc hơi) — NOT just smile
+
+Observed: gừng Act 3 (ngâm chân chậu nước gừng + hơi nước bốc lên + nước
+bắn) outperformed chuối Act 3 (static smile + nải chuối trên mâm). Motion
+in final act holds attention through CTA.
+
+**Two Act 2 "schools" (pick per subject):**
+
+| School | Shows | Memorable via | Best for |
+|---|---|---|---|
+| **Product-use** | HOW to consume (uống ừng ực, tràn mép, đắp, chà) | Visceral detail | Gừng, chanh, nghệ, tỏi (có cách dùng cụ thể) |
+| **Metaphor** | VIBE of benefit (nâng tạ = khoẻ, flex cơ bắp) | Comedic surprise | Chuối, bơ (benefit abstract: tim khoẻ, ngủ ngon) |
+
+**Visceral detail > hoa mỹ adjective.** When writing action in prompt,
+prefer concrete outcome verbs over abstract ones:
+
+- ✅ "nước tràn ra khỏi mép ly chảy xuống cằm"
+- ❌ "uống ngon miệng thưởng thức"
+- ✅ "hơi nước bốc lên ấm áp, nước bắn tung toé"
+- ❌ "khung cảnh thư giãn dễ chịu"
+- ✅ "mồ hôi lấp lánh trên bắp tay"
+- ❌ "dáng vẻ khoẻ mạnh đầy sức sống"
+
+Concrete physics (flow, spill, splash, steam, drip, shine on sweat) gives
+Veo specific things to render. Abstract mood words give it nothing.
+
+**Unexpected prop in familiar setting** — comedic hook pattern: tạ trong
+bếp quê, cối giã trong phòng gym, máy xay trong sân đình. Creates
+juxtaposition humor + visual surprise + differentiation vs other food
+videos using identical props.
 
 ### Per-arc templates
 
