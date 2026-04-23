@@ -898,6 +898,109 @@ app.use('/picker-jobs', express.static(path.resolve(__dirname, '..', 'tmp', 'pic
 
 (Done during skill v1 setup. Verify before first fire.)
 
+## Auto-batch mode (multiple videos, no human review)
+
+Triggered when user asks for batch production: "làm 10 video về X/Y/Z…"
+or "tự làm 10 loại quả theo format gừng". Skips all interactive review
+stages — skill commits to one creative direction per video.
+
+### Shortcuts vs interactive flow
+
+| Stage | Interactive | Auto-batch |
+|---|---|---|
+| Grid pick | User picks 5 axes on picker | Skill writes grid to state.json directly (use Viral Food Hero preset) |
+| Char prompts review | User reviews/edits 4 prompts | Skip — write 1 prompt for target angle only |
+| Char gen | 4 images parallel | **1 image only** — the angle planned as video seed. Saves ~3 credits/video |
+| Char pick | User picks 1 of 4 | Skip — set `char_index=0` directly (only char-1 exists) |
+| Prompts review | User reviews/edits 3 acts | Skip — skill's self-critique catches obvious issues |
+| Video render | User approves → fire | Auto-fire after prompts written |
+| Finalize | Automatic | Automatic (same delogo + outro concat) |
+
+### Grid direct-write
+
+`/api/picker-submit-grid` rejects non-init states and `/api/picker-update`
+has an allow-list that excludes `grid`. So in auto-batch the skill
+writes state.json directly:
+
+```python
+import json
+path = f"tmp/picker-jobs/{job}/state.json"
+with open(path) as f: s = json.load(f)
+s["grid"] = {
+    "setting": "setting-quay-bep-go",        # or setting-bep-que
+    "treatment": "treatment-bodybuilder-3d",
+    "protagonist": "protagonist-food-hero",
+    "arc": "arc-gat-khoe-thathu",
+    "sound": "dialogue"
+}
+with open(path, "w") as f: json.dump(s, f, indent=2, ensure_ascii=False)
+```
+
+### Single char gen (the angle that will actually be used)
+
+Write ONE char prompt matching the video's target start-frame angle.
+For gừng-format (wide ensemble), use Variant 4 template. Skip
+`character_prompts_review` stage entirely — go `grid_done` →
+`char_gen` → `char_picked` (with `char_index=0` since only char-1.png
+exists).
+
+### Action rotation across batch
+
+To avoid visual monotony across the batch, track which Act 2 + Act 3
+actions have been used and rotate through the action library. Example
+rotation for 10 food videos:
+
+| # | Subject | Act 2 action | Act 3 mechanism |
+|---|---|---|---|
+| 1 | Xoài | Cắn dở + chấm muối tôm + nước vàng tràn | Pha sinh tố máy xay + rót ly |
+| 2 | Tỏi | Bẻ tép + peel lớp vỏ mỏng rơi xuống | Giã cối đá + bụi bay |
+| 3 | Nghệ | Khuấy bột nghệ + mật ong vàng xoáy | Rót nước nghệ mật ong vào ly |
+| 4 | Chanh | Vắt nước vào ly có đá | Chà chanh lên da + ánh sáng lướt |
+| 5 | Tía tô | Vò lá + nhựa xanh lộ ra | Thả lá vào nồi nước sôi + bốc hơi |
+| 6 | Hạt sen | Đổ nắm sen vào chén cháo + rắc | Khuấy chè + hạt sen nổi |
+| 7 | Rau má | Vò lá vào máy xay | Rót nước xanh vào ly + bắn giọt |
+| 8 | Đậu đen | Đổ đậu vào chảo rang + tiếng xèo | Khuấy chè đậu đen + hơi bốc |
+| 9 | Sắn dây | Pha bột với nước + sủi bọt | Rót bột sắn vào ly có đá + trong suốt |
+| 10 | Quế | Gõ thanh quế vào ly trà + thơm | Rắc quế bột lên trà + xoáy lên |
+
+If a subject doesn't fit bodybuilder-3D morphology (e.g., tiny seeds),
+render as "a handful / đống / nắm" where the group has muscle arms,
+not individual tiny unit.
+
+### Batch driver loop
+
+Pseudocode for the orchestrator side:
+
+```python
+for subject in subjects_list:
+    job_id = picker_init(subject)
+    write_grid_direct(job_id, PRESET_GRID)
+    char_prompt = render_char_prompt_v4_template(subject)
+    fire_char_gen_single(job_id, char_prompt)  # wait for char-1.png
+    act1, act2, act3 = render_video_prompts(subject, action_rotation)
+    update_state(job_id, video_prompts=[act1,act2,act3], state="video_gen")
+    fire_video_render(job_id)  # blocks ~11min
+    finalize_delogo_outro(job_id)
+    update_state(job_id, state="done", video_url=f"/picker-jobs/{job_id}/final-branded.mp4")
+    # Gallery endpoint auto-picks up new final-branded.mp4 — no manual step
+```
+
+### Cost + time per batch of 10
+
+- Credits: ~30-40 (1 char × 10 + 3 Veo clips × 10 = 40 max)
+- Time: ~4 hours sequential (daemon single-worker)
+- User interaction: 1 approval of subject list, then 0 until done
+
+### When batch fails
+
+- **Content filter reject**: soften aggressive language, retry same act
+- **Veo selector timeout**: kill daemon + clear profile lock, retry
+- **Subject unsuitable**: if char gen returns malformed shape (e.g.,
+  tiny seed not muscular), update char prompt to "a pile of X with
+  muscle arms holding fists up" and re-gen. Skip if still bad after
+  2 tries — move to next subject.
+- **Stop on 2 consecutive failures**: don't burn credits on broken pipeline
+
 ## Error handling
 
 - **flow-cli / flow-video-cli fails** → capture error_code + error message,
