@@ -829,12 +829,36 @@ Template:
 [CHARACTER_FULL_DESC], nở nụ cười tha thứ, miệng nói 'thôi được rồi bỏ qua chuyện cũ, từ mai nhớ ăn tao nha, [INSTRUCTION_1], [INSTRUCTION_2], [INSTRUCTION_3], [SUBJECT] Việt Nam ngon bổ rẻ nhớ chưa', hai tay dang rộng chào đón, [SETTING_TEXT] với [INANIMATE_AMBIENT], ánh sáng tự nhiên ấm áp qua cửa sổ, tông màu dịu
 ```
 
-Hook options for Act 1 confrontation (pick 1 randomly per video, don't
-repeat the same across back-to-back videos):
-- `ê bọn mày, nhìn tao cho kỹ đi`
-- `tao là X đây, nghe cho rõ`
-- `bao nhiêu năm tao có mặt trong mâm cơm Việt`
-- `bọn mày biết tao là ai không`
+Hook style library for Act 1 (pick 1 per video, rotate across batch so
+back-to-back videos don't repeat style). Pattern user feedback on
+dưa hấu: **don't overuse "chê đồ ngoại"** — some imports serve real
+purposes, always-bashing reads as formulaic. Max ~1-in-10 videos
+should attack competitors directly. Prefer hooks that stand on their
+own merits:
+
+| # | Style | Template opener | When to use |
+|---|---|---|---|
+| 1 | **Nostalgia pride** | `ê mày có nhớ hồi bé bà cho tao ăn không, giờ mày quên tao rồi à` | Heritage subjects (lá tía tô, nghệ, quế) |
+| 2 | **Contrarian challenge** | `mày cứ bảo tao quê mùa rẻ tiền, nhìn cho kỹ đây` | Underrated subjects (đậu đen, rau má) |
+| 3 | **Pain-point diagnose** | `ê mày đang bị X/Y/Z đúng không, có biết tại sao không` | Symptom-specific (sắn dây → nhậu, nghệ → dạ dày) |
+| 4 | **Stats shock** | `1 miếng tao bằng 3 ly [X] đấy biết không` | Nutrient-dense (tỏi allicin, đậu đen protein) |
+| 5 | **Curiosity tease** | `đố mày biết cái gì vừa [A] vừa [B] vừa [C]` | Multi-benefit subjects (hạt sen, xoài) |
+| 6 | **Bi hài underdog** | `buồn quá cả tháng không ai hỏi đến tao` | Less-hyped foods (rau má, sắn dây) |
+| 7 | **Coach authority** | `nghe tao nói rõ nha, mỗi ngày phải 1 [X]` | Imperative — tập (rau má → da) |
+| 8 | **Family secret** | `bí mật của bà nội tao để lại 3 đời khoẻ đẹp là đây` | Traditional recipes (nghệ mật ong, tía tô) |
+| 9 | **Viral trending** | `cả tiktok đang sốt về tao mà mày chưa biết à` | Trendy angles (seed oil alternatives) |
+| 10 | **Regional pride** | `từ Hà Giang đến Cà Mau, ai ở quê mà không biết tao` | Vietnamese-ubiquitous (đậu đen, chanh) |
+| 11 | **Insider whisper** | `nghe tao thì thầm này, uống 1 tuần là khác hoàn toàn` | Intimate benefits (skincare, sleep) |
+| 12 | **Wake-up slap** | `dậy đi mày! bao năm bỏ bê cơ thể, giờ tao đây` | Energy / metabolism subjects |
+| 13 | **Legacy 100 năm** | `ông bà cố của mày đã dùng tao cả trăm năm trước khi có thuốc tây` | Medicinal foods (tía tô, nghệ, sắn dây) |
+| 14 | **Socratic chain** | `mày có biết sao dân Nhật sống thọ không? vì họ ăn tao` | International authority flex |
+| 15 | **Seasonal tie-in** | `trời nóng điên rồi, không ăn tao thì định sao` | Weather-tied (rau má → summer, quế → winter) |
+| 16 | **Formal intro** | `xin tự giới thiệu, tao là X đây, nghề tay trái là siêu thực phẩm` | Comedic formality |
+| ⚠️ | **Chê đồ ngoại** (legacy — use sparingly) | `bọn mày toàn ăn [IMPORTED_Y], quên tao à` | Max 1-in-10 — don't lean on this |
+
+**Rotation rule:** track last 3 videos' hook style. Don't pick same
+style within 3-video window. If subject fits multiple styles, pick one
+that's been longest-unused in the catalog.
 
 #### `arc-yeu-sieu-swagger` — Weakness → Superpower → Swagger
 
