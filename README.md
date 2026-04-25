@@ -68,11 +68,24 @@ Subcommands:
 | `--project-id N --segment-id M` | `<FLOW_ROOT_DIR>/priv/uploads/video_projects/N/segments/M/flow.png` | Content Hub integration |
 | *(no flags)* | `/tmp/flow_content/flow-<unix-timestamp>.png` | casual standalone default |
 
+Generation flags:
+
+- `--aspect RATIO` — `16:9` | `9:16` | `1:1` | `4:3` | `3:4`. Toggles
+  Flow's aspect-ratio popover before submitting. Default: omit the flag
+  to keep Flow's current UI state (typically `9:16` after recent video
+  runs).
+
 Examples:
 
 ```bash
 # Standalone — no flags, image saved under /tmp/flow_content/
-flow-cli generate "A weathered wooden bridge over a mountain stream in late autumn, 16:9"
+flow-cli generate "A weathered wooden bridge over a mountain stream in late autumn"
+
+# Landscape thumbnail / banner
+flow-cli generate "A weathered wooden bridge over a mountain stream" --aspect 16:9
+
+# Square (social profile, kawaii character)
+flow-cli generate "A friendly cartoon avocado mascot" --aspect 1:1 --output mascot.png
 
 # Custom output path (absolute)
 flow-cli generate "A ceramic coffee cup on a worn leather journal" --output ~/Pictures/coffee.png
@@ -81,7 +94,7 @@ flow-cli generate "A ceramic coffee cup on a worn leather journal" --output ~/Pi
 flow-cli generate "a misty pine forest at dawn" --output custom/forest.png
 
 # Content Hub integration — saves under video_projects/<p>/segments/<s>/flow.png
-flow-cli generate "neurons firing, cinematic macro, 16:9" --project-id 1 --segment-id 42
+flow-cli generate "neurons firing, cinematic macro" --aspect 16:9 --project-id 1 --segment-id 42
 
 # Prompt via stdin (any mode)
 echo "a sunset over the Pacific, long exposure clouds" | flow-cli generate
@@ -234,7 +247,9 @@ right now (or `null` if idle), plus `worker_busy` to distinguish "idle" from
   // Provide either output_path OR (project_id + segment_id):
   "output_path": "string",    // absolute, or relative to FLOW_ROOT_DIR
   "project_id": 0,            // integer, legacy Content Hub pattern
-  "segment_id": 0             // integer, legacy Content Hub pattern
+  "segment_id": 0,            // integer, legacy Content Hub pattern
+  "aspect": "9:16"            // optional: "16:9" | "9:16" | "1:1" | "4:3" | "3:4"
+                              // (omit to keep Flow's current UI state)
 }
 // → {"job_id": "j_...", "queue_position": 1}
 ```

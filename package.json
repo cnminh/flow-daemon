@@ -1,6 +1,6 @@
 {
   "name": "flow-daemon",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Playwright-driven daemon + CLIs for generating images and videos via labs.google/flow",
   "main": "server.js",

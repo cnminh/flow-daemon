@@ -75,6 +75,10 @@ CLI defaults (`bin/flow-cli.js::cmdGenerate`):
 - No flags → `output_path: /tmp/flow_content/flow-<unix-ts>.png` (standalone)
 - `--output PATH` → `output_path: PATH`
 - `--project-id / --segment-id` → legacy Content Hub path
+- `--aspect RATIO` → `aspect: RATIO` (`16:9` | `9:16` | `1:1` | `4:3` | `3:4`).
+  Omit to keep Flow's current UI state. Toggled in the popover by
+  `lib/image.js::ensureImageModeAndCount` using the same
+  `selectors.video.aspectOption` selector as video mode.
 
 **Back-compat rule:** the legacy `{project_id, segment_id}` body shape must
 keep working. Content Hub's Elixir `FlowClient` relies on it. Don't remove
@@ -91,7 +95,8 @@ npm install -g .                                     # global `flow-cli` command
 
 flow-cli daemon                                      # foreground daemon on :47321
 flow-cli health
-flow-cli generate "a bowl of ramen, 16:9"            # standalone → /tmp/flow_content/
+flow-cli generate "a bowl of ramen"                  # standalone → /tmp/flow_content/
+flow-cli generate "neurons firing" --aspect 16:9     # landscape banner
 flow-cli generate "x" --project-id 1 --segment-id 2  # Content Hub path
 
 npm test                                             # unit tests (hermetic, ~10s)
