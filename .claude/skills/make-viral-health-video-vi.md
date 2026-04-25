@@ -340,45 +340,52 @@ user approves when they're ready.
 ### Stage 4d — Fire video
 
 Read the FINAL `video_prompts` from state (user may have edited them
-inline). Fire:
+inline). **Use 4 prompts** — Act 1/2/3 + Act 4 contextual outro
+(see Per-arc templates below). Fire:
 ```bash
-flow-video-cli generate "<act1>" "<act2>" "<act3>" \
+flow-video-cli generate "<act1>" "<act2>" "<act3>" "<act4>" \
   --frame /Users/cuongnguyen/projects/flow-daemon/tmp/picker-jobs/<job>/char-N.png \
   --output /Users/cuongnguyen/projects/flow-daemon/tmp/picker-jobs/<job>/final.mp4 \
   --json
 ```
 
-Use `run_in_background: true`. ~10-12 min. Check wakeup at 330s, then
-every 240s if still running.
+Use `run_in_background: true`. ~13-17 min for 4 clips. Check wakeup at
+600s, then every 240s if still running.
 
-When render done, **finalize the video** (delogo Veo watermark +
-append channel outro) BEFORE marking state=done. Single ffmpeg command
-does both — filter_complex delogos the main clip then concats outro:
+When render done, **finalize the video** (delogo Veo watermark only —
+no static outro concat, since Act 4 IS the outro) BEFORE marking
+state=done:
 
 ```bash
 ffmpeg -y \
   -i /Users/cuongnguyen/projects/flow-daemon/tmp/picker-jobs/<job>/final.mp4 \
-  -i /Users/cuongnguyen/projects/flow-daemon/assets/outro.mp4 \
-  -filter_complex "[0:v]delogo=x=1770:y=3670:w=320:h=110:show=0[v0];[v0][0:a][1:v][1:a]concat=n=2:v=1:a=1[v][a]" \
-  -map "[v]" -map "[a]" \
+  -vf "delogo=x=1770:y=3670:w=320:h=110:show=0" \
   -c:v libx264 -c:a aac -preset fast -crf 20 \
   /Users/cuongnguyen/projects/flow-daemon/tmp/picker-jobs/<job>/final-branded.mp4
 ```
 
-Two stages in one ffmpeg pass:
-1. **Delogo**: removes Veo watermark at bottom-right. Box coords
-   `x=1770 y=3670 w=320 h=110` calibrated for 2160×3840 (4K 9:16) —
-   valid for all flow-video-cli outputs (default resolution + aspect).
-2. **Concat outro**: appends `assets/outro.mp4` (5s chuối bodybuilder
-   doing bicep curl + "nhớ follow kênh để biết thêm nhiều kiến thức
-   hay nhá"). Outro itself is pre-delogoed. Hard cut, no crossfade.
+Then auto-compress for FB upload (Playwright CDP setInputFiles caps
+at 50 MB):
 
-Finalization ~20-30s CPU (re-encodes full duration). Both streams need
-matching codecs — we use `libx264 + aac` so subsequent concats align
-even if outro source format differs.
+```bash
+ffmpeg -y \
+  -i /Users/cuongnguyen/projects/flow-daemon/tmp/picker-jobs/<job>/final-branded.mp4 \
+  -c:v libx264 -preset slow -crf 26 \
+  -c:a aac -b:a 128k \
+  /Users/cuongnguyen/projects/flow-daemon/tmp/picker-jobs/<job>/final-branded-fb.mp4
+```
 
-If outro file missing or ffmpeg fails, fall back to raw `final.mp4` and
-warn in chat — don't block the "done" state.
+**Why no static outro concat anymore:** Old approach concatenated
+`assets/outro.mp4` (chuối bodybuilder) at the end of every video.
+Created a jarring brand cut — character mid-Act-3 dialogue → smash
+cut to chuối ad. Replaced 2026-04-26 with **Act 4 contextual outro**
+(see template below): the SAME character closes the video naturally
+with a relaxed wave + follow CTA. 4 clips × 8s = 32s total.
+
+Box coords `x=1770 y=3670 w=320 h=110` calibrated for 2160×3840
+(4K 9:16) — valid for all flow-video-cli outputs (default resolution).
+
+Finalization ~30s CPU.
 
 Then update state + point video_url at the branded file:
 ```bash
@@ -828,6 +835,29 @@ Template:
 ```
 [CHARACTER_FULL_DESC], nở nụ cười tha thứ, miệng nói 'thôi được rồi bỏ qua chuyện cũ, từ mai nhớ ăn tao nha, [INSTRUCTION_1], [INSTRUCTION_2], [INSTRUCTION_3], [SUBJECT] Việt Nam ngon bổ rẻ nhớ chưa', hai tay dang rộng chào đón, [SETTING_TEXT] với [INANIMATE_AMBIENT], ánh sáng tự nhiên ấm áp qua cửa sổ, tông màu dịu
 ```
+
+**Act 4 (contextual outro — REQUIRED, replaces static chuối outro
+since 2026-04-26):** relaxed close with follow CTA. Same character,
+NEW POSE: ngồi tựa thoải mái cạnh sản phẩm/món ăn hoàn thiện. Speed
+hint changes to `giọng nói nhẹ nhàng tự nhiên` (tone shift signals
+"end of video"). Lighting `warm ấm áp dịu` not the dramatic rim light.
+
+Template:
+```
+[CHARACTER_FULL_DESC], ngồi tựa thoải mái cạnh [FINISHED_PRODUCT/MÓN_ĂN] đang bốc hơi nhẹ, mỉm cười hài lòng nhìn thẳng camera, một tay vẫy chào nhẹ nhàng thân thiện, ánh sáng warm ấm áp chiều vàng dịu, miệng nói '[CTA_DIALOGUE]', giọng nói nhẹ nhàng tự nhiên, [SETTING_TEXT] mờ bokeh, phong cách 3D render photorealistic muscular food character commercial, chi tiết cao, không hoạt hình phẳng
+```
+
+CTA dialogue rotation (8-12 words, chill tone, MUST include "follow"):
+- `follow Xóm Khoẻ Mạnh nha, mai tao kể tiếp` (~9 words)
+- `nhớ follow để xem tao mỗi ngày, sống khoẻ nha` (~10 words)
+- `tạm biệt nha, follow kênh để khoẻ đẹp mỗi ngày` (~10 words)
+- `follow nhé, hẹn mày video mới mai, sống vui khoẻ` (~10 words)
+
+**Why Act 4 instead of static chuối outro**: User feedback 2026-04-25
+on batch v2 — chuối outro felt jarring (Act 3 dialogue mid-flow →
+smash cut to chuối ad). Same-character outro keeps continuity, gives
+2-3s of "settling" before CTA, and ends each video on its own brand
+note. +1 Veo credit/video but worth it for retention.
 
 Hook style library for Act 1 (pick 1 per video, rotate across batch so
 back-to-back videos don't repeat style). Pattern user feedback on
