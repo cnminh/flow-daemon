@@ -87,6 +87,33 @@
       border-radius: 4px;
       font-size: 0.66em;
     }
+    .tile .posted {
+      position: absolute;
+      top: 0.4em;
+      right: 0.4em;
+      display: flex;
+      gap: 0.25em;
+      pointer-events: none;
+    }
+    .tile { position: relative; }
+    .badge-fb {
+      background: #1877f2;
+      color: #fff;
+      font-size: 0.65em;
+      font-weight: 700;
+      padding: 0.2em 0.5em;
+      border-radius: 4px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+    }
+    .badge-tiktok {
+      background: #000;
+      color: #fff;
+      font-size: 0.65em;
+      font-weight: 700;
+      padding: 0.2em 0.5em;
+      border-radius: 4px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+    }
     .empty { color: var(--muted); text-align: center; padding: 3em 1em; }
 
     /* Modal */
@@ -187,16 +214,21 @@ async function load() {
   const grid = document.getElementById('grid');
   const empty = document.getElementById('empty');
   if (!items.length) { empty.style.display = 'block'; return; }
-  grid.innerHTML = items.map(v => `
+  grid.innerHTML = items.map(v => {
+    const badges = [];
+    if (v.posted_to?.fb) badges.push('<span class="badge-fb">✓ FB</span>');
+    if (v.posted_to?.tiktok) badges.push('<span class="badge-tiktok">✓ TT</span>');
+    return `
     <div class="tile" onclick='openVideo(${JSON.stringify(v).replace(/'/g, "&#39;")})'>
+      ${badges.length ? `<div class="posted">${badges.join('')}</div>` : ''}
       <img class="thumb" src="${v.thumb_url}" loading="lazy" onerror="this.style.background='#333'" />
       <div class="meta">
         <div class="subject">${escapeHtml(v.subject)}</div>
         <div class="date">${fmtDate(v.updated_at)}${v.video_version > 1 ? ' · v' + v.video_version : ''}</div>
         <div class="tags">${gridTags(v.grid).map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('')}</div>
       </div>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
 }
 
 function escapeHtml(s) {

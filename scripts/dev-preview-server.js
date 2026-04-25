@@ -403,7 +403,8 @@ app.get('/api/videos', (_req, res) => {
         created_at: data.created_at,
         grid: data.grid || null,
         video_version: resolvedVersion,
-        state: data.state
+        state: data.state,
+        posted_to: data.posted_to || null
       });
     }
     items.sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
