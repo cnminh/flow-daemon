@@ -58,6 +58,7 @@ async function drainQueue() {
         output_path: p.output_path,
         rootDir,
         flowUrl,
+        aspect: p.aspect,
       });
     }
     queue.markDone(jobId, result);
@@ -159,7 +160,7 @@ function createServer() {
     }
 
     // Image path (unchanged back-compat).
-    const { prompt, project_id, segment_id, output_path } = body;
+    const { prompt, project_id, segment_id, output_path, aspect } = body;
     if (!prompt) {
       return res.status(400).json({ error: 'prompt required' });
     }
@@ -170,12 +171,16 @@ function createServer() {
         error: 'either output_path OR (project_id + segment_id) required',
       });
     }
+    if (aspect && !['16:9', '9:16', '1:1', '4:3', '3:4'].includes(aspect)) {
+      return res.status(400).json({ error: 'aspect must be one of "16:9","9:16","1:1","4:3","3:4"' });
+    }
     const jobId = queue.enqueue({
       type: 'image',
       prompt,
       project_id,
       segment_id,
       output_path: output_path || null,
+      aspect: aspect || null,
     });
     touchActivity();
     setImmediate(drainQueue);

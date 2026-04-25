@@ -129,6 +129,12 @@ async function cmdGenerate(rawArgs) {
   const projectFlag = flags['project-id'];
   const segmentFlag = flags['segment-id'];
   const outputFlag = flags.output;
+  const aspectFlag = flags.aspect;
+
+  if (aspectFlag && !['16:9', '9:16', '1:1', '4:3', '3:4'].includes(aspectFlag)) {
+    console.error('error: --aspect must be one of "16:9", "9:16", "1:1", "4:3", "3:4"');
+    process.exit(1);
+  }
 
   let bodyFields;
   let modeLabel;
@@ -150,6 +156,7 @@ async function cmdGenerate(rawArgs) {
     bodyFields = { output_path: `/tmp/flow_content/flow-${ts}.png` };
     modeLabel = `standalone → ${bodyFields.output_path}`;
   }
+  if (aspectFlag) bodyFields.aspect = aspectFlag;
 
   let enqueueRes;
   try {
@@ -228,6 +235,9 @@ Generate flags:
                       --project-id / --segment-id.
   --project-id N      Content Hub project id (pair with --segment-id) —
   --segment-id N        saves to priv/uploads/video_projects/<p>/segments/<s>/flow.png
+  --aspect RATIO      aspect ratio: 16:9 | 9:16 | 1:1 | 4:3 | 3:4
+                      (default: keeps Flow's current UI selection — usually
+                       9:16 from previous video runs)
   --prompt TEXT       prompt (or use positional arg, or pipe via stdin)
   --json              print full status JSON instead of just the image path
   --quiet             suppress progress messages on stderr
