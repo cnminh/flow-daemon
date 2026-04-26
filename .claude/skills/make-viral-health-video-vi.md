@@ -812,13 +812,65 @@ dialogue. Save mouth actions for silent Act 3 ambient or outro clips.
 
 #### `arc-gat-khoe-thathu` — Complaint → Pride → Forgiveness
 
-**Act 1 (gắt):** character complains viewer has ignored them, lists
-2-3 health benefits, accuses specific imported alternatives.
+### Act 1 — VISUAL HOOK FIRST RULE (CRITICAL for TikTok retention)
 
-Template (fill \[…\]):
+**The first 1-2 seconds determine 80% of retention.** Don't open Act 1
+with a static character monologuing. Open with a VISUAL STUNT —
+something that stops the scroll — then deliver dialogue in seconds 2-7.
+
+**3-beat structure for 8s clip:**
+
+| Time | Beat | Description |
+|---|---|---|
+| 0-1.5s | **VISUAL STUNT** | Action moment that grabs attention before viewer hears anything |
+| 1.5-7s | **DIALOGUE** | Character delivers the hook line |
+| 7-8s | **CLOSE** | Pose-and-hold or transitional action into Act 2 |
+
+**Visual stunt library** (pick 1 per video — rotate, never repeat
+back-to-back):
+
+| Stunt | Description | Best for |
+|---|---|---|
+| **Burst entry** | Character bùng vọt lên từ thớt/đĩa với khói/bụi tung toé | Củ rễ (gừng, tỏi, nghệ) |
+| **Splash dive** | Nhảy lên từ ly nước/chậu, nước văng tung toé | Mọng nước (dưa hấu, cam) |
+| **Pattern interrupt extreme close-up** | Mắt to xoe nhìn thẳng camera (raksha kiểu mắt anime), zoom out reveal character | Mọi subject |
+| **Drop-in slam** | Character rơi xuống từ trên cao đập mạnh xuống thớt, nồi rung | Củ cứng (khoai lang, củ sắn) |
+| **Self-cut reveal** | Character bổ nửa mình ra, lộ ruột | Bổ nửa subjects (đu đủ, dưa hấu) |
+| **Explosion peel** | Vỏ tróc bùng ra như fireworks → character muscular lộ | Có lớp vỏ (cam, hành tây, tỏi) |
+| **Mid-action freeze** | Character mid-flex frozen 0.5s rồi continue | Hero pose subjects |
+| **POV camera punch** | Camera tăng tốc lao về phía character, dừng đúng lúc nói | Pain-point hooks |
+
+**Speed/intensity hint for Act 1** (intensify from default
+"nhanh gọn dứt khoát"):
+- For shock hooks: `giọng nói gấp gáp đầy năng lượng quát to`
+- For whisper hooks: `giọng thì thầm khàn khàn bí ẩn`
+- For viral trending: `giọng hào hứng tăng dần`
+
+**Template (visual stunt + dialogue):**
+```
+[VISUAL STUNT 0-1.5s] — vd: "Burst entry: [SUBJECT] cơ bắp bùng vọt lên từ thớt với bụi tung toé, lửa rim light bùng dramatic, mid-air pose mạnh mẽ"
+
+→ Sau đó dialogue + setting:
+
+[CHARACTER_FULL_DESC], [VISUAL_STUNT_DESC], mặt mày bực bội đang gắt '[HOOK_OPENER], [3 FACTS]', tay chỉ thẳng camera quyết liệt, [SETTING_TEXT], ánh sáng warm rim light dramatic, [TREATMENT_TAGS], chi tiết cao, không hoạt hình phẳng
+```
+
+**Old Act 1 template (legacy — for reference, prefer visual-first):**
 ```
 [CHARACTER_FULL_DESC], mặt mày bực bội đang gắt '[CONFRONTATIONAL_HOOK], tao là [SUBJECT] đây, tao có [FACT_1], [FACT_2], [FACT_3], mà bọn mày toàn đi ăn [IMPORTED_ALT_1] hay [IMPORTED_ALT_2] đắt tiền, quên tao', tay chỉ thẳng vào camera, miệng mở to quát tháo, [SETTING_TEXT], [TREATMENT_SOFT_TAGS], tông màu trung tính không chói
 ```
+
+### 3-second rule (full video)
+
+Every 3 seconds across the whole video should have a NEW visual surprise
+to maintain attention. With 4 acts × 8s = 32s total, that's ~10 visual
+moments minimum:
+- Act 1: stunt entry, dialogue gesture, close pose
+- Act 2: hand mechanism reveal, product transformation, flex
+- Act 3: dive/demo action, splash, settle pose
+- Act 4: chill into pose, smile, wave goodbye
+
+Avoid static talking-head shots beyond 3s. Always be doing something.
 
 **Act 2 (khoe):** character brags about delivery — 3 benefits shown as
 visual proofs ("tim khoẻ" + trái tim xuất hiện, "da đẹp" + làn da mịn).
