@@ -20,6 +20,7 @@ const PORT = parseInt(process.argv[2] || process.env.FLOW_PREVIEW_PORT || '47399
 const HOST = process.env.FLOW_PREVIEW_HOST || '127.0.0.1';
 const ROOT = path.resolve(__dirname, '..', 'tmp', 'dev-preview');
 const JOBS_ROOT = path.resolve(__dirname, '..', 'tmp', 'picker-jobs');
+const CHARS_ROOT = path.resolve(__dirname, '..', 'tmp', 'chars');
 // Static HTML sources (committed) live under web/; served alongside the
 // ephemeral tmp/dev-preview/ content so picker.html etc. load the latest
 // source without manual copy steps.
@@ -27,6 +28,7 @@ const WEB_ROOT = path.resolve(__dirname, '..', 'web');
 
 fs.mkdirSync(ROOT, { recursive: true });
 fs.mkdirSync(JOBS_ROOT, { recursive: true });
+fs.mkdirSync(CHARS_ROOT, { recursive: true });
 
 const app = express();
 app.use(express.json());
@@ -474,6 +476,262 @@ app.use(express.static(ROOT, { index: false }));
 // references as `/picker-jobs/<id>/…`. No directory listing — only direct
 // file access, which is what the picker's fetched URLs need.
 app.use('/picker-jobs', express.static(JOBS_ROOT, { index: false }));
+
+// ─── Chars Gallery ──────────────────────────────────────────────────────
+// Static files: tmp/chars/<subject-slug>/v<N>/<index>.png
+// Char code: <subject-slug>-v<N>-<index>  (e.g. "rau-den-do-v1-3")
+app.use('/chars', express.static(CHARS_ROOT, { index: false }));
+
+// API: enumerate all chars from disk. Files with `.hidden.` substring
+// (e.g. `1.hidden.png`) are filtered out — hidden by user via /api/chars/hide.
+//
+// Returns:
+//   chars: flat list of {code, subject, version, index, url, mtime}
+//   shoots: object keyed by `<subject>/<version>` for scenes-* versions,
+//           value = {sourceCharCode, sourceCharUrl} (from _meta.json or
+//           inferred from latest non-scenes char of same subject).
+app.get('/api/chars', (_req, res) => {
+  const out = [];
+  const shoots = {};
+  // First pass: collect per-subject (newest non-scenes char by mtime) for inference fallback.
+  const latestCharBySubject = {};
+  try {
+    const subjects = fs.readdirSync(CHARS_ROOT).filter((d) =>
+      fs.statSync(path.join(CHARS_ROOT, d)).isDirectory());
+    for (const subject of subjects.sort()) {
+      // Versions: any subdirectory. Convention is `v<N>` for char gens
+      // and `scenes-<jobshort>` for per-scene start frames from
+      // render-by-scene.py. Both show up in the gallery.
+      const versions = fs.readdirSync(path.join(CHARS_ROOT, subject))
+        .filter((d) => /^[a-z0-9_-]+$/i.test(d) && fs.statSync(path.join(CHARS_ROOT, subject, d)).isDirectory())
+        .sort();
+      for (const version of versions) {
+        const files = fs.readdirSync(path.join(CHARS_ROOT, subject, version))
+          .filter((f) => /\.(png|jpg|jpeg|webp)$/i.test(f) && !f.includes('.hidden.'))
+          .sort((a, b) => parseInt(a, 10) - parseInt(b, 10));
+        for (const file of files) {
+          const idx = parseInt(file, 10);
+          const item = {
+            code: `${subject}-${version}-${idx}`,
+            subject, version, index: idx,
+            url: `/chars/${subject}/${version}/${file}`,
+            mtime: fs.statSync(path.join(CHARS_ROOT, subject, version, file)).mtimeMs,
+          };
+          out.push(item);
+          if (!version.startsWith('scenes-')) {
+            const cur = latestCharBySubject[subject];
+            if (!cur || cur.mtime < item.mtime) latestCharBySubject[subject] = item;
+          }
+        }
+        // Read _meta.json if scenes-* dir, build shoot entry.
+        if (version.startsWith('scenes-')) {
+          const metaPath = path.join(CHARS_ROOT, subject, version, '_meta.json');
+          let sourceCharCode = null;
+          if (fs.existsSync(metaPath)) {
+            try {
+              const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+              sourceCharCode = meta.source_char_code || null;
+            } catch { /* ignore parse errors */ }
+          }
+          shoots[`${subject}/${version}`] = { sourceCharCode };
+        }
+      }
+    }
+    // Inference fallback: shoot without explicit sourceCharCode → use latest
+    // non-scenes char of same subject.
+    for (const [key, shoot] of Object.entries(shoots)) {
+      if (shoot.sourceCharCode) continue;
+      const subject = key.split('/')[0];
+      const fallback = latestCharBySubject[subject];
+      if (fallback) shoot.sourceCharCode = fallback.code;
+    }
+    // Resolve sourceCharCode → sourceCharUrl by lookup against `out`.
+    const codeToUrl = Object.fromEntries(out.map((c) => [c.code, c.url]));
+    for (const shoot of Object.values(shoots)) {
+      if (shoot.sourceCharCode) shoot.sourceCharUrl = codeToUrl[shoot.sourceCharCode] || null;
+    }
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+  res.json({ chars: out, shoots, count: out.length });
+});
+
+// Hide a char by renaming `<idx>.png` → `<idx>.hidden.png`. Reversible
+// by a manual rename (or future /api/chars/unhide).
+app.post('/api/chars/hide', (req, res) => {
+  const { code } = req.body || {};
+  // code format: <subject>-<version>-<idx>
+  // version may be `v<N>` (char gens) or `scenes-<jobshort>` (per-scene
+  // frames). Match greedy version + numeric trailing idx.
+  const m = /^([a-z0-9-]+?)-([a-z0-9_-]+)-(\d+)$/i.exec(code || '');
+  if (!m) return res.status(400).json({ error: 'invalid code (expected <subject>-<version>-<idx>)' });
+  const [, subject, version, idx] = m;
+  const dir = path.join(CHARS_ROOT, subject, version);
+  if (!fs.existsSync(dir)) return res.status(404).json({ error: 'unknown subject/version' });
+  const candidates = fs.readdirSync(dir).filter((f) => f.startsWith(`${idx}.`) && !f.includes('.hidden.'));
+  if (candidates.length === 0) return res.status(404).json({ error: 'no file matching index' });
+  const file = candidates[0];
+  const ext = path.extname(file);
+  const dst = `${idx}.hidden${ext}`;
+  fs.renameSync(path.join(dir, file), path.join(dir, dst));
+  res.json({ ok: true, hidden: dst });
+});
+
+// HTML gallery — auto-renders thumbnails grouped by subject + version.
+app.get('/chars-gallery.html', (_req, res) => {
+  res.type('html').send(`<!doctype html>
+<html><head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Chars Gallery</title>
+<style>
+  body { font-family: -apple-system, system-ui, sans-serif; margin: 0; padding: 1rem; background: #1a1a1a; color: #eee; }
+  h1 { font-size: 1.2rem; margin: 0 0 1rem; }
+  h2 { font-size: 0.95rem; margin: 1.2rem 0 0.4rem; color: #ccc; border-bottom: 1px solid #333; padding-bottom: 0.3rem; display: flex; gap: 0.5rem; align-items: baseline; }
+  h2 .badge { font-size: 0.7rem; color: #6cf; font-weight: normal; }
+  h2 .badge.shoot { color: #fc6; }
+  .group { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 0.6rem; margin-bottom: 1rem; }
+  .strip { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.4rem; margin-bottom: 1rem; }
+  .strip .item.char-cell { outline: 2px solid #fc6; outline-offset: -2px; }
+  .strip .item.char-cell::before { content: 'char'; position: absolute; top: 0.2rem; left: 0.2rem; background: rgba(252,200,100,0.85); color: #000; font-size: 0.6rem; padding: 1px 4px; border-radius: 2px; font-weight: bold; z-index: 1; }
+  .strip .item .label { position: absolute; top: 0.2rem; right: 0.2rem; background: rgba(0,0,0,0.6); color: #fff; font-size: 0.6rem; padding: 1px 4px; border-radius: 2px; }
+  .item { position: relative; background: #222; border-radius: 6px; overflow: hidden; cursor: pointer; transition: transform 0.1s; }
+  .item:hover { transform: scale(1.02); }
+  .item img { width: 100%; aspect-ratio: 9/16; object-fit: cover; display: block; }
+  .item .code { font-size: 0.7rem; padding: 0.3rem 0.4rem; color: #aaa; word-break: break-all; }
+  .item .actions { display: flex; gap: 0.3rem; padding: 0 0.3rem 0.3rem; }
+  .item .actions button { flex: 1; font-size: 0.65rem; padding: 0.25rem; border: none; border-radius: 3px; cursor: pointer; background: #333; color: #ccc; }
+  .item .actions button:hover { background: #444; color: #fff; }
+  .item .actions button.hide:hover { background: #6b2020; }
+  .item.placeholder { background: #2a2a2a; display: flex; align-items: center; justify-content: center; color: #666; font-size: 0.7rem; aspect-ratio: 9/16; }
+  .empty { color: #666; padding: 2rem; text-align: center; }
+  dialog { background: #111; color: #eee; border: none; border-radius: 8px; padding: 1rem; max-width: 95vw; max-height: 95vh; }
+  dialog img { max-width: 80vw; max-height: 80vh; display: block; }
+  dialog .code { margin-top: 0.5rem; font-family: monospace; }
+  dialog::backdrop { background: rgba(0,0,0,0.85); }
+  button { background: #333; color: #eee; border: none; padding: 0.4rem 0.8rem; border-radius: 4px; cursor: pointer; margin-top: 0.5rem; }
+  button:hover { background: #444; }
+</style>
+</head><body>
+<h1>Chars Gallery</h1>
+<div id="root"><div class="empty">Loading…</div></div>
+<dialog id="modal">
+  <img id="modal-img" />
+  <div class="code" id="modal-code"></div>
+  <button onclick="document.getElementById('modal').close()">Close</button>
+  <button onclick="navigator.clipboard.writeText(document.getElementById('modal-code').textContent); this.textContent='Copied!'; setTimeout(()=>this.textContent='Copy code', 1500)">Copy code</button>
+</dialog>
+<script>
+fetch('/api/chars').then(r => r.json()).then(({ chars, shoots }) => {
+  const root = document.getElementById('root');
+  if (!chars || chars.length === 0) {
+    root.innerHTML = '<div class="empty">No chars yet. Run flow-cli generate --count 4 --output tmp/chars/&lt;slug&gt;/v1/1.png</div>';
+    return;
+  }
+  shoots = shoots || {};
+  const grouped = {};
+  const groupMtime = {};
+  for (const c of chars) {
+    const key = c.subject + '/' + c.version;
+    (grouped[key] ||= []).push(c);
+    groupMtime[key] = Math.max(groupMtime[key] || 0, c.mtime || 0);
+  }
+  // Sort groups newest-first so just-generated chars + frames appear at top.
+  const sortedEntries = Object.entries(grouped).sort((a, b) => groupMtime[b[0]] - groupMtime[a[0]]);
+
+  function itemHtml(c, opts) {
+    opts = opts || {};
+    const cls = ['item'];
+    if (opts.charCell) cls.push('char-cell');
+    const label = opts.label ? \`<div class="label">\${opts.label}</div>\` : '';
+    return \`
+      <div class="\${cls.join(' ')}" data-code="\${c.code}" data-url="\${c.url}">
+        \${label}
+        <img src="\${c.url}" loading="lazy" />
+        <div class="code">\${c.code}</div>
+        <div class="actions">
+          <button class="copy" onclick="event.stopPropagation();copyCode(this,'\${c.code}')">Copy</button>
+          <button class="hide" onclick="event.stopPropagation();hideChar(this,'\${c.code}')">Hide</button>
+        </div>
+      </div>\`;
+  }
+
+  const html = sortedEntries.map(([key, items]) => {
+    const isShoot = items[0].version.startsWith('scenes-');
+    if (!isShoot) {
+      return \`
+        <h2>\${key} <span class="badge">char picks</span></h2>
+        <div class="group">
+          \${items.map(c => itemHtml(c)).join('')}
+        </div>\`;
+    }
+    // Shoot row: [linked char] [scene 1..N] (max 5 cells)
+    const shoot = shoots[key] || {};
+    const sceneItems = items.slice().sort((a, b) => a.index - b.index);
+    const charCellHtml = shoot.sourceCharCode && shoot.sourceCharUrl
+      ? itemHtml({ code: shoot.sourceCharCode, url: shoot.sourceCharUrl }, { charCell: true, label: 'char' })
+      : '<div class="item placeholder">(char unknown)</div>';
+    const sceneCells = sceneItems.map((c, i) => itemHtml(c, { label: 'S' + (i + 1) })).join('');
+    return \`
+      <h2>\${key} <span class="badge shoot">video shoot</span></h2>
+      <div class="strip">\${charCellHtml}\${sceneCells}</div>\`;
+  }).join('');
+  root.innerHTML = html;
+  for (const el of root.querySelectorAll('.item:not(.placeholder)')) {
+    el.addEventListener('click', () => {
+      document.getElementById('modal-img').src = el.dataset.url;
+      document.getElementById('modal-code').textContent = el.dataset.code;
+      document.getElementById('modal').showModal();
+    });
+  }
+}).catch(e => {
+  document.getElementById('root').innerHTML = '<div class="empty">Error: ' + e.message + '</div>';
+});
+
+function copyCode(btn, code) {
+  const flash = () => {
+    const orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = orig, 1200);
+  };
+  // Try modern clipboard API (HTTPS/localhost only)
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(code).then(flash).catch(fallback);
+  } else {
+    fallback();
+  }
+  function fallback() {
+    // execCommand('copy') works on HTTP via Tailscale
+    const ta = document.createElement('textarea');
+    ta.value = code;
+    ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); flash(); }
+    catch(e) { alert('Copy failed: select code manually:\\n' + code); }
+    document.body.removeChild(ta);
+  }
+}
+
+function hideChar(btn, code) {
+  if (!confirm('Hide ' + code + '?')) return;
+  fetch('/api/chars/hide', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ code }),
+  }).then(r => r.json()).then(data => {
+    if (data.ok) {
+      const card = btn.closest('.item');
+      card.style.opacity = 0;
+      setTimeout(() => card.remove(), 300);
+    } else {
+      alert('Hide failed: ' + (data.error || 'unknown'));
+    }
+  });
+}
+</script>
+</body></html>`);
+});
 
 app.listen(PORT, HOST, () => {
   console.log(`[dev-preview] serving ${ROOT}`);

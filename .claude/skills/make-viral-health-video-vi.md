@@ -207,26 +207,67 @@ curl -sS -X POST -H "Content-Type: application/json" \
 - `state: "char_prompts_approved"` → user approved (possibly-edited)
   prompts → proceed to stage 2c.
 
-### Stage 2c — Fire 4 image gens
+### Stage 2c — Fire char gen (1 call, 4 images via --count)
 
-Read final `character_prompts` from state (user may have edited).
-Fire 4 background image jobs SEQUENTIALLY (daemon queue is single-worker
-anyway, parallel won't help):
+Read final `character_prompts` from state. Use `flow-cli generate` with
+`--count 4` flag (added 2026-04-29) to gen 4 variants in ONE call (1 popover
+toggle, ~50-60s total — vs 4 separate calls × 30-40s = 2-3 min). Variants
+share the same character prompt; Imagen returns 4 variations naturally.
 
 ```bash
-mkdir -p /Users/cuongnguyen/projects/flow-daemon/tmp/picker-jobs/<job>
-for i in 1 2 3 4; do
-  flow-cli generate "<prompt_i>" \
-    --output /Users/cuongnguyen/projects/flow-daemon/tmp/picker-jobs/<job>/char-$i.png
-done
+flow-cli generate "<character_prompt>" \
+  --aspect 9:16 \
+  --count 4 \
+  --output /Users/cuongnguyen/projects/flow-daemon/tmp/chars/<subject-slug>/v1/1.png
 ```
 
-Use `run_in_background: true` + ScheduleWakeup to pace. Rough budget:
-4 × 30-40s = ~2 min total. Check wakeup after ~150s.
+Output naming: `1.png` + `1_1.png` + `1_2.png` + `1_3.png` (first keeps base
+name, rest append `_N` suffix). Check wakeup after ~90s.
+
+If user doesn't like all 4, regen with prompt edit (next version becomes
+`v2`): `tmp/chars/<subject-slug>/v2/1.png` etc. Bumping version preserves
+history and avoids overwriting earlier picks.
+
+### Chars Gallery
+
+All character renders live under a single browsable URL so user can compare
+across subjects + versions without hunting through job dirs:
+
+**URL:** `http://mac-mini.tailf56d7b.ts.net:47399/chars-gallery.html`
+
+**Path convention:**
+```
+tmp/chars/<subject-slug>/v<N>/<index>.png
+       │           │       │       │
+       │           │       │       └── index 1-4 from --count
+       │           │       └────────── version (v1 = first gen, v2 = regen, …)
+       │           └────────────────── lowercase slug, dashes (e.g. "rau-den-do", "muop-dang")
+       └──────────────────────────── parent dir for all chars (preview server serves it as /chars/)
+```
+
+**Char code format** (for user reference): `<subject-slug>-v<N>-<index>`
+- `rau-den-do-v1-1` → tmp/chars/rau-den-do/v1/1.png
+- `cantay-v1-3` → tmp/chars/cantay/v1/3.png
+- `muop-dang-v2-2` → tmp/chars/muop-dang/v2/2.png
+
+User picks by code: "render rau-den-do-v1-3 với prompt act1/2/3/4" → skill
+copies `tmp/chars/rau-den-do/v1/3.png` → `tmp/picker-jobs/<new-job>/char-1.png`
++ fires video render.
+
+**Why centralize:**
+- Single URL to bookmark — user doesn't navigate per-job
+- Future-proofs char reuse: same char across multiple subject videos / variants
+- Auto-discovered by gallery — no manual register
+- Versioning preserves regen history (compare v1 vs v2 visually)
+
+**Server impl:** `dev-preview-server.js` should:
+1. Serve `tmp/chars/` static at `/chars/`
+2. Provide `chars-gallery.html` (auto-list all chars, group by subject, show
+   code + thumbnail + click-to-fullscreen)
+3. Optional API `/api/chars` returning `[{code, url, subject, version}]`
 
 Once all 4 PNGs exist, copy them to the preview-served directory so the
-picker UI can load them (the picker URLs reference `/picker-jobs/<id>/…`
-— extend server serving first, see Serving paths below).
+picker UI can load them.
 
 Update state:
 ```bash
@@ -262,18 +303,212 @@ State has `char_index: 0..3`. The picked frame is
 Generate 3 act prompts using the **video-prompts formula** (below),
 driven by arc + protagonist + setting + treatment + sound + subject.
 
-Then run a **self-critique** across these 5 dimensions for each prompt:
+Then run a **self-critique** across these 8 dimensions for each prompt:
 
 1. **Character continuity** — Do same visual cues (texture, màu, distinctive
-   features) appear across all 3 acts? Any drift risk?
+   features) appear across all acts? Any drift risk?
 2. **Narrative cohesion** — Does Act 2 pay off Act 1 setup? Does Act 3
-   resolve Act 1 tension (not 3 disconnected scenes)?
+   resolve Act 1 tension (not disconnected scenes)?
 3. **Dialogue callback** — Does Act 3 reference something Act 1 said?
 4. **Drift risks** — Non-human body parts for non-human protagonists?
    (e.g. "hai tay dang rộng" for a cholesterol blob — drops back to a
-   human figure). POV shifts? Tone mismatches with arc?
+   human figure). POV shifts? Tone mismatches with arc? Anti-human
+   guardrail present in every prompt? ("TUYỆT ĐỐI KHÔNG có người…")
 5. **Content safety** — Medical claims in safe territory (general
    nutrition); no "chữa ung thư" / "thay thế thuốc" / fake scarcity.
+6. **Subject-mechanism authenticity** — Does Act 2 action match how
+   Vietnamese ACTUALLY use this subject? See lookup table below. ❌ FAIL
+   examples: "vắt nước mướp đắng tươi uống" (no one drinks raw bitter
+   melon juice — should be DRY-LEAF tea or stuffed-meat soup); "giã
+   chuối thành bột" (chuối eaten whole, not ground); "vò lá tỏi" (no
+   such thing — tỏi is a bulb, not leaves).
+7. **Visual specificity / food-stylist level** — Does each món ăn /
+   dụng cụ in Act 2-4 have ≥3 concrete details? Required: (a) **color
+   accurate to reality** — vd canh có nước TRONG VẮT (broth) với rau
+   nổi bên trên xanh, KHÔNG phải "nước xanh"; (b) **specific topping
+   /garnish** (lá hành thái nhỏ, rau ngò, lát chanh, mè rang); (c)
+   **specific vessel** (bát đất nung Việt nâu trầm, ly thuỷ tinh khắc
+   tinh tế cao, ấm trà sứ trắng). Generic "ly thuỷ tinh có đá" = ❌ FAIL.
+8. **Stunt narrative fit** — Does the visual stunt origin (giàn / thớt
+   / rổ / ấm / nồi) match the subject's natural habitat? Mướp đắng →
+   giàn (vine) ✅, thớt ❌ (copy-paste from cà chua); lá tía tô → bụi
+   tươi ✅, rổ ❌; cá thu → mâm cá tươi ✅, vườn ❌.
+
+### Health claim discipline — use "hỗ trợ" framing (CRITICAL — 2026-04-30)
+
+User feedback (cần tây v3 dialogue review): "huyết áp ổn hết đau" sợ
+viewer hiểu nhầm là cure-promise. Dùng `hỗ trợ` thôi cho chắc.
+
+**Rules:**
+
+1. **Framing — "ăn thêm / uống thêm", KHÔNG prescribe regularity**:
+   - ❌ "mỗi ngày tối 1 đĩa, sáng 1 ly" (overprescription)
+   - ❌ "thường xuyên ăn..." / "đều đặn uống..." (vẫn implies regimen)
+   - ✅ "ăn thêm cần tây xào thịt bò, uống nước ép cần tây..."
+
+   "Ăn thêm / uống thêm" framing positions subject as a SUPPLEMENT to
+   normal diet — not a regimen, not a cure. Safest framing.
+
+2. **Default to "hỗ trợ" framing**, NOT outcome-promise:
+   - ❌ `"huyết áp ổn hết đau"`, `"khỏi gout"`, `"chữa lành gan"`
+   - ✅ `"hỗ trợ hạ huyết áp"`, `"hỗ trợ giảm acid uric"`, `"hỗ trợ
+     gan"`, `"giúp tiêu hoá"`
+
+3. **Avoid absolute words**: bỏ `hết` / `khỏi` / `chữa lành` / `dứt
+   điểm` → dùng `giảm` / `đỡ` / `ổn` / `hỗ trợ` / `giúp`.
+
+4. **Time-frame OK only if backed by source** (Vinmec, BV, etc.).
+   "2 tuần" / "1 tháng" only if claim is in published medical
+   reference. If unsure, drop the time-frame claim entirely.
+
+5. **No medication-replacement implication**: never imply replacing
+   prescribed medicine. "Hỗ trợ ngoài thuốc" / "kết hợp với điều trị"
+   if mentioned at all.
+
+**Why this matters:** flagging as medical disinformation by FB / TikTok
+algos drops reach + risk strikes. Soft framing keeps the script in
+"educational lifestyle" lane, not "medical advice" lane.
+
+### Verify dish authenticity BEFORE writing Act 2/3 prompts (CRITICAL — 2026-04-30)
+
+User feedback (cần tây v3 review): "cần tây hầm xương có phổ biến không?
+có thật không hay bịa?" — and the answer was "no, made up by transferring
+'hầm xương' template from atisô/củ sen". Inventing a dish that doesn't
+exist in VN cuisine breaks viewer trust + signals AI slop.
+
+**3-step verify before drafting Act 2/3 visual + dialogue:**
+
+1. **List 3 candidate dishes** for the subject (Act 2 = mechanism, Act
+   3 = full meal). Don't pick "first that comes to mind" — that's
+   often a template borrowed from previous subject.
+
+2. **WebSearch each candidate** on 2-3 VN-specific sources:
+   - `cookpad.com/vn` (community recipes — proxy for popularity)
+   - `monngonmoingay.com` (popular VN cooking site)
+   - `vi.wikipedia.org` (ingredient overview + traditional uses)
+   - Google with `site:.vn` filter for VN-domain content only
+   - For health benefit claims: `vinmec.com` or `hellobacsi.com`
+
+3. **Reject if:**
+   - <3 cookpad hits OR
+   - 0 Wikipedia mention OR
+   - Top results are AI-generated blogs / Pinterest / TripAdvisor
+     (signal: thin content, no specific recipe steps) OR
+   - Search returns the dish under a DIFFERENT name (e.g. "cần tây
+     hầm xương" → "canh sườn nấu cần tây" — confirm template name
+     was wrong)
+
+**Save verified pool to memory** under
+`project_verified_dishes_<subject>.md` — list 3-5 verified dishes per
+subject. Reuse for future videos of the same subject (avoid
+re-verifying).
+
+**Anti-pattern: template transfer.** Patterns like `hầm xương`, `kho
+tộ`, `rim mật`, `cuốn lá lốt` are subject-specific — atisô hầm xương
+real, củ sen hầm sườn real, cần tây hầm xương INVENTED. Always
+re-verify when applying a cooking template to a new subject.
+
+
+
+| Subject type | Examples | Act 2 mechanism (real Vietnamese use) |
+|---|---|---|
+| **Quả mọng nước** | cam, chanh, dưa hấu, cà chua, bưởi | Vắt/ép lấy nước uống ✅ |
+| **Quả đắng/cứng** | mướp đắng, khổ qua | KHÔNG vắt tươi. Lát mỏng phơi khô → trà; nhồi thịt → canh; xào trứng |
+| **Củ rễ** | gừng, tỏi, nghệ, riềng | Giã/ép + pha mật ong; lát mỏng pha trà |
+| **Lá khô đặc trưng trà** | vối, dứa, ổi, sen | Vò + thả ấm nước sôi → trà; KHÔNG vắt |
+| **Lá tươi giòn** | rau má, mồng tơi, cải xoong | Vò + xay sinh tố / xào tỏi |
+| **Hạt** | kê, đậu xanh, đậu đen, mè | Đổ nồi nấu cháo / chè / rang |
+| **Bột** | sắn dây, gấc bột | Khuấy với nước lạnh / nóng |
+| **Quả nhiều xơ** | đu đủ xanh, mít non | Bổ + nạo + nấu canh / gỏi |
+| **Hải sản** | cá thu, cá hồi, tôm | Thái khúc + kho / nướng / canh |
+| **Củ ngọt** | khoai lang, khoai môn | Luộc / nướng nguyên củ; KHÔNG ép nước |
+
+### Vanish + re-describe drift (for dim 4) — CRITICAL for video prompts
+
+When a video prompt has the character **vanish** (submerge / burst / fade)
+then **reappear**, Veo loses visual continuity at the vanish point. Any
+character description AFTER the vanish becomes a new generation seed →
+drift. Reference image / start frame's influence drops drastically
+post-vanish.
+
+**Vanish patterns** in current skill templates:
+- "bùng vọt rời khỏi [bụi / luống / giàn]" — char hidden then bursts (Act 1)
+- "dive vào [nồi / ly / bồn]" — char submerges (Act 3)
+- "biến mất trong khói / lộn ngược" — partial vanish
+
+**3 fix strategies:**
+
+1. **Minimal re-description post-vanish:** describe ACTION only, NOT BODY:
+   - ❌ `"ngoi lên mặt canh cười sảng khoái với 2 cánh tay CƠ BẮP giơ lên flex"`
+   - ✅ `"ngoi lên đứng vững giữa nồi, 2 tay giơ lên flex"`
+   - ❌ `"đáp xuống đứng hiên ngang, mặt mày bực bội đầy năng lượng cơ bắp..."`
+   - ✅ `"đáp xuống đứng hiên ngang, miệng quát to '<dialogue>'"`
+
+2. **Avoid vanish entirely:** continuous action — no submerge:
+   - Thay "dive vào nồi" → "đứng cạnh nồi múc canh ra ly"
+   - Thay "bùng vọt từ luống" → "bước ra từ phía sau bụi cây" (visible throughout)
+
+3. **Hybrid (recommended):** keep Act 1 burst (visual stunt opener, drift
+   forgivable, opens video high-energy) but remove vanish in Acts 2-3-4.
+   Act 3 = continuous action (stir / pour / flex over pot), no submerge.
+
+### Subject-form drift watch list (for dim 4)
+
+When character là form ít phổ biến của một cây/quả, Veo dễ drift sang
+form phổ biến hơn khi extend (đặc biệt clip dive vào liquid/món ăn —
+Veo "nhớ" công thức món có nguyên liệu phổ biến). Negative prompt bắt buộc.
+
+| Form character (dùng) | Form drift target | Negative prompt phải có |
+|---|---|---|
+| **Lá ổi** | Quả ổi tròn | "KHÔNG có quả ổi tròn, chỉ có lá ổi" |
+| **Vỏ dưa hấu (cùi trắng)** | Ruột đỏ | "KHÔNG có ruột dưa hấu đỏ, chỉ có cùi vỏ trắng" |
+| **Hạt mít** | Múi mít vàng | "KHÔNG có múi mít vàng, chỉ có hạt mít nâu" |
+| **Đu đủ xanh** | Đu đủ chín cam | "KHÔNG có đu đủ chín cam, chỉ có đu đủ xanh chưa chín" |
+| **Lá vối / lá tía tô / lá sen** | Cây nguyên / quả | "Chỉ có lá, KHÔNG có cây nguyên hay quả" |
+| **Hạt sen** | Bông sen / lá sen | "KHÔNG có bông sen, chỉ có hạt sen" |
+| **Cùi dừa** | Quả dừa nguyên | "KHÔNG có quả dừa nguyên, chỉ có cùi trắng" |
+
+Apply trong MỌI act (không chỉ act 1) — extend là điểm drift mạnh nhất.
+
+### Dish color reality (for dim 7)
+
+Veo có xu hướng "tô màu" món ăn theo nguyên liệu chính → render sai. Phải
+specify rõ TÁCH BẠCH "broth color" vs "ingredient color":
+
+| Dish | Real color (specify in prompt) | Wrong (Veo default) |
+|---|---|---|
+| Canh rau xanh (mồng tơi, rau dền, cải xoong) | Nước canh **TRONG VẮT hơi vàng nhạt**, rau xanh nổi trên mặt | "Canh xanh" → broth bị nhuộm xanh ❌ |
+| Canh cà chua / canh chua | Nước canh **đỏ cam nhạt** (do cà chua tan), không đỏ đậm | "Canh đỏ" → đỏ máu ❌ |
+| Trà lá / trà khô | Nước **vàng nâu đến nâu đậm** trong vắt | "Trà xanh" → xanh lá ❌ (chỉ trà tươi xay là xanh) |
+| Nước ép rau xanh | Nước **xanh đặc đục** (là pulp, không trong) | "Nước trong vắt xanh" ❌ |
+| Nồi cháo | **Trắng đục có hạt nổi**, hành xanh thái nhỏ rắc lên | "Cháo vàng" ❌ |
+| Sinh tố trái cây | Đặc, màu theo trái cây, có **bọt nhỏ trên mặt** | Lỏng như nước ❌ |
+
+### Veo-unknown specific names → use generic alternative (2026-04-30)
+
+Veo's training is heavy on Western / international ingredients but
+weak on Vietnam-specific items. When prompt names a specific VN item
+Veo doesn't know, it renders a generic substitute that often looks
+wrong (different fish, different bone, different vegetable) → fails
+"thoại không match render" check.
+
+**Rule:** prefer Veo-known generic terms in cooking shots; reserve VN-
+specific names for the dialogue (where audio carries the meaning, not
+visuals).
+
+| Veo-unknown VN-specific | Substitute in visual prompt | Keep specific in dialogue? |
+|---|---|---|
+| **cá lóc** (snakehead) | `xương heo` (canh hầm xương) or `cá thịt trắng` | Drop — say `cá` or `xương` generic |
+| **cá rô đồng** | `cá thịt trắng` | Drop |
+| **gà ác** (silkie) | `gà thường` | Drop or rephrase |
+| **rau má** in salad | (use as juice instead — Veo renders xay better than salad) | Keep when food form unambiguous |
+| **bưởi da xanh** | `bưởi tím nhạt` generic | Drop variety, keep `bưởi` |
+| **chanh không hạt** | just `chanh` | Drop variety |
+
+When in doubt, **simpler beats specific**: cần tây v3 dropped `cá lóc`
+→ `xương heo` and the canh render came out clean. Trade-off: lose
+"chuẩn miền Nam" authenticity in visuals — but the audio dialogue can
+still mention regional specifics if they matter for the script.
 
 Output per-act critique as a list of `{level, text}` notes where `level`
 is `ok` / `warn` / `fail`. Example:
@@ -337,12 +572,66 @@ the creative execution changes.
 Increment `regen_count`. Push state back → `prompts_review`. No cap —
 user approves when they're ready.
 
-### Stage 4d — Fire video
+### Stage 4d — Fire video — pick mode (extend / ingredients / per-scene)
+
+**Three modes** as of 2026-04-30:
+
+| Mode | Flag | Trade-offs |
+|---|---|---|
+| **Extend** (classic) | `--frame char.png` | ✅ Motion smooth, audio liền mạch. ❌ Character drift cumulative across scenes. |
+| **Ingredients** | `--ingredients char.png[,ref2,ref3]` | ✅ Character locked (re-references image per scene). ❌ Jump cuts (mitigated by 200ms crossfade default). |
+| **Per-scene frames** (`scripts/render-by-scene.py`) | gen frame per scene with char as Imagen reference, then `--frame frame-N.png` per clip | ✅ Strongest character lock + per-scene staging control (each frame composes the act explicitly). ❌ Costs 4 extra image credits/video; jump cuts (use crossfade). |
+
+**Rule of thumb (2026-04-30):**
+- **Default to Per-scene frames** for hero subjects where staging matters (Act 2 ấm trà, Act 3 nồi canh) — atisô v2/v3 + lá ổi v3/v4 confirmed best lock.
+- **Ingredients** is the cheaper fallback when staging is simple (1 setting all acts) and budget tight.
+- **Extend** only for heavy motion-continuity sequences (chase, choreographed) where seam smoothness > character lock.
+- Subjects that drift hard (lá ổi → quả ổi, rau dền → human, etc.) → never use Extend.
+
+**Mutual exclusion:** Veo UI lets you pick Frames OR Ingredients sub-mode, not both. CLI enforces same: `--frame` and `--ingredients` are mutually exclusive.
+
+**Frame reuse for dialogue-only iterations:** when iterating ONLY on speech speed / dialogue length (not visuals), reuse prior version's frames — saves 4 image credits per re-render. Atisô v3 (2026-04-30) reused v2's per-scene frames + only changed prompts (22w + rapid-fire cue) → confirmed faster speech without new image budget. Pattern: copy `tmp/picker-jobs/job_subject_vN/scenes/scene-*-frame.png` into the new job dir, then run only the video gen step of `render-by-scene.py`.
+
+**Start frame = action-in-progress, NOT a posed flex (CRITICAL — 2026-04-30):**
+Scene 2/3 start frames must bake the natural cooking action directly,
+not a "standing + flex bắp tay" pose. When a frame has flex pose, Veo
+keeps the flex 1-2s into the clip before transitioning to the action
+prompt → character looks "gồng / không tự nhiên" the entire opening
+beat (cần tây v2 issue confirmed by user 2026-04-30: re-gen scene 2/3
+prompts dropping flex from VIDEO prompt didn't help because the FRAME
+itself was the source). Fix at the frame level.
+
+Frame prompt rules per scene:
+- **Scene 1:** standing rant pose with one hand pointing at camera —
+  flex/no-flex doesn't matter much (rant is the focus). Keep current.
+- **Scene 2:** action-in-progress — character mid-juicing / mid-slicing /
+  mid-pouring. E.g. `"một tay cầm thân cần tây đẩy vào miệng máy ép, tay
+  kia hứng ly thuỷ tinh dưới vòi nhận nước ép vừa chảy ra"`. NEVER
+  `"flex bắp tay double biceps cố định"`.
+- **Scene 3:** action-in-progress — character mid-stirring / mid-serving.
+  E.g. `"hai tay cầm vá gỗ múc canh đang khuấy nhẹ trong nồi, hơi nước
+  bốc lên"`. NEVER `"một tay cầm vá tay kia flex bắp tay"`.
+- **Scene 4:** seated relaxed close — fine to keep static, no flex
+  needed (it's the chill outro pose).
+
+Negation in prompts ("không flex bắp tay") is NOT reliable — Veo often
+ignores or partially applies negative cues. The fix is positive: bake
+the desired action into the frame so flex never starts.
+
+### Fire video
 
 Read the FINAL `video_prompts` from state (user may have edited them
 inline). **Use 4 prompts** — Act 1/2/3 + Act 4 contextual outro
-(see Per-arc templates below). Fire:
+(see Per-arc templates below). Fire ONE of:
+
 ```bash
+# Ingredients mode (recommended default, locks character):
+flow-video-cli generate "<act1>" "<act2>" "<act3>" "<act4>" \
+  --ingredients /Users/cuongnguyen/projects/flow-daemon/tmp/picker-jobs/<job>/char-N.png \
+  --output /Users/cuongnguyen/projects/flow-daemon/tmp/picker-jobs/<job>/final.mp4 \
+  --json
+
+# Extend mode (classic, smooth motion but drifts):
 flow-video-cli generate "<act1>" "<act2>" "<act3>" "<act4>" \
   --frame /Users/cuongnguyen/projects/flow-daemon/tmp/picker-jobs/<job>/char-N.png \
   --output /Users/cuongnguyen/projects/flow-daemon/tmp/picker-jobs/<job>/final.mp4 \
@@ -623,24 +912,36 @@ these rules (inherited from `write-viral-food-script-vi`):
 ### Dialogue length + speech rate rules (CRITICAL — each Veo clip = 8s)
 
 Each clip is ~8s. Vietnamese speech rate ≈ 3 words/second. That means
-**quotes must fit in ~24 words per act** or Veo will truncate the dialogue.
+**quotes target 22-24 words per act** to fully use the audio budget.
 
-- **Hard budget:** ≤24 Vietnamese words in quotes per act. Not per
-  sentence — per ACT total (all quoted dialogue combined).
+- **TARGET range:** 22-24 Vietnamese words per act. Hard cap: 24.
+- **MINIMUM:** 18 words per act. Below 18 = Veo has dead air → reads
+  the dialogue at slow pace to fill 8s, feels sluggish (atisô v2 issue
+  2026-04-30: 9-12 word dialogues sounded slow even with "nhanh gọn"
+  hint). Veo's TTS expands to fill silence — pack content in.
 - **Count the quoted words literally** during self-critique. If a draft
-  has 40+ words, cut ruthlessly — drop 1-2 facts rather than rush.
-- **Speed hint in every prompt:** append `giọng nói nhanh gọn dứt khoát`
-  near the end (before background) so Veo renders at a brisker pace.
-  Examples: `"... miệng nói '<quote>', giọng nói nhanh gọn dứt khoát rõ ràng, background ..."`
+  has under 18 words, ADD content (extra fact, verb, callback) until ≥22.
+- **If draft has 40+ words**, cut ruthlessly — drop 1-2 facts.
+- **Speed hint in every prompt:** strongly recommend the rapid-fire
+  cue (default below) — `nhanh gọn dứt khoát` alone is NOT strong
+  enough; Veo defaults to slow conversational pace.
+- **Default speed cue (use everywhere except Act 4 chill outro):**
+  `"giọng nói rất nhanh tuôn ra liên tục không có khoảng nghỉ, tốc độ TikTok creator rapid-fire pace"`
+  → Place near the end of prompt before background.
 - **Structure preference:** short declarative sentences > run-on clauses.
   2 short quotes better than 1 long one.
+- **Avoid rote filler phrases** — `"thôi bỏ qua"`, `"thực sự là"` —
+  eats budget without content.
+- **Tone shift only at Act 4** (outro) → `"giọng nói nhẹ nhàng tự nhiên"`
+  signals video closing.
 - Prior drafts that violated this rule (chuối v1, bơ v1) had 40-80 words
-  per act — Veo dropped the middle clauses silently.
-- **Avoid rote filler phrases** — user feedback on gừng v2: `"thôi bỏ qua"`
-  at start of Act 3 sounded scripted and ate budget. Default Act 3 to
-  natural conversational lines ("nhớ nha" / "ờ" / direct instruction).
-  The tha thứ/forgiveness vibe is better conveyed through VISUAL (smile,
-  soft lighting, open posture) than through formulaic opener words.
+  per act — Veo dropped the middle clauses silently. Drafts under 18
+  words (atisô v2) → felt sluggish despite "nhanh gọn" hint.
+- **Empirical validation (atisô v3, 2026-04-30):** rebuilding atisô
+  v2 with the SAME frames but 22-word dialogues + rapid-fire cue
+  produced noticeably faster TikTok-pace speech. User confirmed
+  "nhanh hơn rồi" → posted to FB. Rule confirmed working in
+  production; treat as default for all new videos.
 
 ### Visual mechanism rules (CRITICAL — learned from chuối/gừng compare)
 
@@ -888,28 +1189,60 @@ Template:
 [CHARACTER_FULL_DESC], nở nụ cười tha thứ, miệng nói 'thôi được rồi bỏ qua chuyện cũ, từ mai nhớ ăn tao nha, [INSTRUCTION_1], [INSTRUCTION_2], [INSTRUCTION_3], [SUBJECT] Việt Nam ngon bổ rẻ nhớ chưa', hai tay dang rộng chào đón, [SETTING_TEXT] với [INANIMATE_AMBIENT], ánh sáng tự nhiên ấm áp qua cửa sổ, tông màu dịu
 ```
 
-**Act 4 (contextual outro — REQUIRED, replaces static chuối outro
-since 2026-04-26):** relaxed close with follow CTA. Same character,
-NEW POSE: ngồi tựa thoải mái cạnh sản phẩm/món ăn hoàn thiện. Speed
-hint changes to `giọng nói nhẹ nhàng tự nhiên` (tone shift signals
-"end of video"). Lighting `warm ấm áp dịu` not the dramatic rim light.
+**Act 4 (contextual outro — OPTIONAL, see "3-scene vs 4-scene"
+below):** relaxed close with follow CTA. Same character, NEW POSE:
+ngồi tựa thoải mái cạnh sản phẩm/món ăn hoàn thiện. Speed hint changes
+to `giọng nói nhẹ nhàng tự nhiên` (tone shift signals "end of
+video"). Lighting `warm ấm áp dịu` not the dramatic rim light.
 
 Template:
 ```
 [CHARACTER_FULL_DESC], ngồi tựa thoải mái cạnh [FINISHED_PRODUCT/MÓN_ĂN] đang bốc hơi nhẹ, mỉm cười hài lòng nhìn thẳng camera, một tay vẫy chào nhẹ nhàng thân thiện, ánh sáng warm ấm áp chiều vàng dịu, miệng nói '[CTA_DIALOGUE]', giọng nói nhẹ nhàng tự nhiên, [SETTING_TEXT] mờ bokeh, phong cách 3D render photorealistic muscular food character commercial, chi tiết cao, không hoạt hình phẳng
 ```
 
-CTA dialogue rotation (8-12 words, chill tone, MUST include "follow"):
+### 3-scene vs 4-scene structure (CRITICAL — 2026-04-30)
+
+**Default: 3 scenes (~24s).** Drop Act 4. Merge a brief follow CTA into
+the END of Act 3's dialogue. User feedback (cần tây v3): "không cần
+scene 4 nữa để thoại nhanh hơn". Tighter pacing, 1 fewer Veo credit.
+
+3-scene Act 3 dialogue pattern: action benefits + brief CTA at end.
+Example (cần tây): `'tối 1 bát canh cần tây hầm xương, sáng 1 ly nước
+ép xanh, huyết áp ổn hết đau, nhớ follow kênh nha'` (23 words). Keep
+22-24 word target. Speed cue stays rapid-fire.
+
+**Use 4 scenes ONLY when:**
+- Act 3 dialogue would need to be >24 words to include both benefits +
+  CTA (i.e. complex subject with many use instructions).
+- Subject has a strong "settling" moment that benefits from a chill
+  outro shot (heritage / nostalgia subjects).
+- Video pacing feels rushed without a closer.
+
+**CTA dialogue rotation (MUST rotate across batch — don't reuse same
+line for back-to-back videos):**
+
+For 3-scene (brief, append to Act 3):
+- `nhớ follow kênh nha` (~4 words)
+- `follow để xem tiếp nha` (~5 words)
+- `nhớ follow Xóm Khoẻ Mạnh nha` (~6 words)
+- `follow tao để khoẻ mỗi ngày` (~6 words)
+
+For 4-scene (Act 4 chill, 8-12 words, MUST include "follow"):
 - `follow Xóm Khoẻ Mạnh nha, mai tao kể tiếp` (~9 words)
 - `nhớ follow để xem tao mỗi ngày, sống khoẻ nha` (~10 words)
 - `tạm biệt nha, follow kênh để khoẻ đẹp mỗi ngày` (~10 words)
 - `follow nhé, hẹn mày video mới mai, sống vui khoẻ` (~10 words)
 
-**Why Act 4 instead of static chuối outro**: User feedback 2026-04-25
-on batch v2 — chuối outro felt jarring (Act 3 dialogue mid-flow →
-smash cut to chuối ad). Same-character outro keeps continuity, gives
-2-3s of "settling" before CTA, and ends each video on its own brand
-note. +1 Veo credit/video but worth it for retention.
+**CTA rotation discipline:** track which CTA was used per recently-
+posted video. If 3 most recent posts used CTA-1, the next must be
+CTA-2/3/4 — never repeat 3× in a row. User feedback (cần tây review):
+"câu CTA bị lặp lại giữa các video, có cách nào đổi mới được ko?"
+
+**Why Act 4 was originally added (2026-04-26)**: chuối static outro
+felt jarring. Same-character Act 4 fixed jarring transition. With
+3-scene structure (CTA in Act 3), the same continuity is preserved
+because there's no smash cut at all — just one dialogue ending with
+the follow line.
 
 Hook style library for Act 1 (pick 1 per video, rotate across batch so
 back-to-back videos don't repeat style). Pattern user feedback on
@@ -993,16 +1326,17 @@ Example fact banks (extend as needed):
 
 ## Serving paths
 
-The picker UI references images at `/picker-jobs/<id>/…` — the preview
-server must serve `tmp/picker-jobs/` as a static route. Currently the
-server only serves `tmp/dev-preview/`. Extend on first use:
+The preview server (`scripts/dev-preview-server.js`) serves multiple static
+roots:
 
 ```js
-// scripts/dev-preview-server.js — add alongside existing express.static:
-app.use('/picker-jobs', express.static(path.resolve(__dirname, '..', 'tmp', 'picker-jobs')));
+app.use('/picker-jobs', express.static('tmp/picker-jobs'));   // job artifacts
+app.use('/chars',       express.static('tmp/chars'));         // char gallery
+app.use('/dev-preview', express.static('tmp/dev-preview'));   // ad-hoc previews
 ```
 
-(Done during skill v1 setup. Verify before first fire.)
+Plus `chars-gallery.html` for browsable thumbnail grid (see Chars Gallery
+section above). Verify all routes before first fire.
 
 ## Auto-batch mode (multiple videos, no human review)
 
